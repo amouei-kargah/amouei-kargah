@@ -198,13 +198,27 @@ export default function App() {
         )}
       </main>
 
-      {/* Bottom Footer (سفید مایل به مشکی) */}
-      <footer className="bg-white border-t border-zinc-200 py-4 text-center text-xs text-zinc-500">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2 font-medium">
-          <span className="text-zinc-800 font-bold">مجموعه دکوراسیون داخلی و کابینت عمویی</span>
-          <span className="text-zinc-500">
-            سامانه ثبت گزارش تولید کارگاه | اعلان مستقیم به ایمیل: <strong className="text-zinc-900 font-mono dir-ltr">{targetEmail}</strong>
-          </span>
+      {/* Bottom Footer - Dark theme with creator details */}
+      <footer className="bg-zinc-950 border-t border-zinc-800 py-4 text-xs text-zinc-400">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3 font-medium">
+          <div className="flex items-center gap-2">
+            <span className="text-white font-bold">مجموعه دکوراسیون داخلی و کابینت عمویی</span>
+            <span className="hidden sm:inline text-zinc-600">|</span>
+            <span className="text-zinc-400">سامانه ثبت تولید کارگاه</span>
+          </div>
+
+          <div className="flex items-center gap-4 flex-wrap justify-center">
+            <div className="flex items-center gap-1.5 text-zinc-300">
+              <span className="text-zinc-500">تهیه کننده:</span>
+              <strong className="text-white font-bold">محمدابراهیم محمدی</strong>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-zinc-500">شماره تماس:</span>
+              <a href="tel:09119995002" className="text-amber-400 font-mono font-bold hover:underline dir-ltr">
+                ۰۹۱۱۹۹۹۵۰۰۲
+              </a>
+            </div>
+          </div>
         </div>
       </footer>
     </div>

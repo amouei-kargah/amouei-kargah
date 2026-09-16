@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, User, ShieldCheck, Wrench, ChevronLeft, Sparkles, Building, Phone } from 'lucide-react';
+import { Lock, User, ShieldCheck, Wrench, ChevronLeft, Phone, UserPlus, LogIn, CheckCircle } from 'lucide-react';
 import { AuthSession, UserRole } from '../types';
 
 interface AuthScreenProps {
@@ -9,26 +9,40 @@ interface AuthScreenProps {
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, defaultRole = 'production' }) => {
   const [selectedRole, setSelectedRole] = useState<UserRole>(defaultRole);
-  const [username, setUsername] = useState<string>(defaultRole === 'admin' ? 'amouei' : 'tolid');
-  const [password, setPassword] = useState<string>('1234');
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+
+  // Login form state
+  const [username, setUsername] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
+
+  // Register form state
+  const [fullName, setFullName] = useState<string>('');
+  const [phone, setPhone] = useState<string>('');
+  const [regPassword, setRegPassword] = useState<string>('');
+  const [confirmPassword, setConfirmPassword] = useState<string>('');
+
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
   const handleRoleSelect = (role: UserRole) => {
     setSelectedRole(role);
     setError(null);
+    setSuccessMsg(null);
     if (role === 'admin') {
-      setUsername('amouei');
-      setPassword('1234');
+      setAuthMode('login');
+      setUsername('');
+      setPassword('');
     } else {
-      setUsername('tolid');
-      setPassword('1234');
+      setUsername('');
+      setPassword('');
     }
   };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccessMsg(null);
     setLoading(true);
 
     try {
@@ -41,32 +55,107 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, defaultR
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || 'نام کاربری یا رمز عبور نادرست است.');
+        throw new Error(data.error || 'اطلاعات ورود نادرست است.');
       }
 
       const session: AuthSession = {
         role: data.role,
         username: data.username,
         displayName: data.displayName,
+        phone: data.phone,
       };
 
       localStorage.setItem('amouei_cabinet_session', JSON.stringify(session));
+      if (data.displayName && data.role === 'production') {
+        localStorage.setItem('amouei_manager_name', data.displayName);
+      }
+      if (data.phone && data.role === 'production') {
+        localStorage.setItem('amouei_manager_phone', data.phone);
+      }
+
       onLoginSuccess(session);
     } catch (err: any) {
-      setError(err.message || 'خطا در احراز هویت');
+      setError(err.message || 'خطا در ورود به سیستم');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccessMsg(null);
+
+    if (!fullName.trim()) {
+      setError('لطفاً نام و نام خانوادگی خود را وارد کنید.');
+      return;
+    }
+
+    const cleanPhone = phone.trim().replace(/[\s-]/g, '');
+    if (cleanPhone.length < 10) {
+      setError('شماره موبایل وارد شده باید حداقل ۱۰ رقم باشد.');
+      return;
+    }
+
+    if (regPassword.length < 3) {
+      setError('رمز عبور باید حداقل ۳ کاراکتر باشد.');
+      return;
+    }
+
+    if (regPassword !== confirmPassword) {
+      setError('تکرار رمز عبور با رمز وارد شده مطابقت ندارد.');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: fullName.trim(),
+          phone: cleanPhone,
+          password: regPassword,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'خطا در ثبت‌نام');
+      }
+
+      const session: AuthSession = {
+        role: 'production',
+        username: data.username,
+        displayName: data.displayName,
+        phone: data.phone,
+      };
+
+      localStorage.setItem('amouei_cabinet_session', JSON.stringify(session));
+      localStorage.setItem('amouei_manager_name', data.displayName);
+      localStorage.setItem('amouei_manager_phone', data.phone);
+
+      setSuccessMsg('ثبت‌نام شما با موفقیت انجام شد! در حال ورود به سیستم...');
+      setTimeout(() => {
+        onLoginSuccess(session);
+      }, 700);
+    } catch (err: any) {
+      setError(err.message || 'خطا در فرایند ثبت‌نام');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4 sm:p-6 text-zinc-100 selection:bg-zinc-700 selection:text-white relative overflow-hidden">
+    <div className="min-h-screen bg-zinc-950 flex flex-col justify-between p-4 sm:p-6 text-zinc-100 selection:bg-zinc-700 selection:text-white relative overflow-hidden">
       
       {/* Background Architectural Accent lines */}
       <div className="absolute inset-0 bg-[radial-gradient(#27272a_1px,transparent_1px)] [background-size:24px_24px] opacity-25"></div>
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-96 bg-gradient-to-b from-zinc-800/20 to-transparent pointer-events-none"></div>
 
-      <div className="w-full max-w-md relative z-10">
+      <div className="w-full max-w-md mx-auto my-auto relative z-10 py-6">
         
         {/* Brand Header */}
         <div className="text-center mb-6">
@@ -77,16 +166,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, defaultR
             مجموعه دکوراسیون داخلی و کابینت عمویی
           </h1>
           <p className="text-xs text-zinc-400 mt-1.5 font-medium">
-            سامانه یکپارچه ورود پرسنل کارگاه و مدیریت
+            سامانه یکپارچه پرسنل کارگاه و مدیریت
           </p>
         </div>
 
-        {/* Auth Card (سفید مایل به مشکی) */}
+        {/* Auth Card */}
         <div className="bg-white text-zinc-900 rounded-3xl shadow-2xl border border-zinc-200 p-6 sm:p-8">
           
           {/* Role Tabs */}
-          <div className="grid grid-cols-2 p-1 bg-zinc-100 rounded-2xl mb-6 border border-zinc-200">
+          <div className="grid grid-cols-2 p-1 bg-zinc-100 rounded-2xl mb-5 border border-zinc-200">
             <button
+              id="role-btn-production"
               type="button"
               onClick={() => handleRoleSelect('production')}
               className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
@@ -100,6 +190,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, defaultR
             </button>
 
             <button
+              id="role-btn-admin"
               type="button"
               onClick={() => handleRoleSelect('admin')}
               className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
@@ -113,98 +204,244 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, defaultR
             </button>
           </div>
 
-          {/* Role Description Notice */}
-          <div className="mb-5 p-3 rounded-xl bg-zinc-50 border border-zinc-200 text-xs text-zinc-600">
-            {selectedRole === 'production' ? (
-              <p>
-                <strong>دسترسی پرسنل تولید:</strong> ورود به فرم ثبت اقلام و مصالح مصرفی روزانه کارگاه کابینت‌سازی با الزام شماره تماس و نام پروژه.
-              </p>
-            ) : (
-              <p>
-                <strong>دسترسی مدیریت (آقای عمویی):</strong> ورود مستقیم به میز کار گزارشات، فیلتر تاریخ روزانه، اسناد حسابداری و دانلود فایل اکسل.
-              </p>
-            )}
-          </div>
+          {/* Sub-Tabs: Login vs Register (Only for production staff) */}
+          {selectedRole === 'production' && (
+            <div className="flex border-b border-zinc-200 mb-5">
+              <button
+                id="tab-sub-login"
+                type="button"
+                onClick={() => {
+                  setAuthMode('login');
+                  setError(null);
+                  setSuccessMsg(null);
+                }}
+                className={`flex-1 py-2 text-xs font-bold transition-all border-b-2 flex items-center justify-center gap-1.5 cursor-pointer ${
+                  authMode === 'login'
+                    ? 'border-zinc-900 text-zinc-900'
+                    : 'border-transparent text-zinc-400 hover:text-zinc-700'
+                }`}
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>ورود با شماره موبایل</span>
+              </button>
 
-          {/* Error message */}
+              <button
+                id="tab-sub-register"
+                type="button"
+                onClick={() => {
+                  setAuthMode('register');
+                  setError(null);
+                  setSuccessMsg(null);
+                }}
+                className={`flex-1 py-2 text-xs font-bold transition-all border-b-2 flex items-center justify-center gap-1.5 cursor-pointer ${
+                  authMode === 'register'
+                    ? 'border-zinc-900 text-zinc-900'
+                    : 'border-transparent text-zinc-400 hover:text-zinc-700'
+                }`}
+              >
+                <UserPlus className="w-3.5 h-3.5 text-emerald-600" />
+                <span>ثبت‌نام تولیدکننده جدید</span>
+              </button>
+            </div>
+          )}
+
+          {/* Error & Success Messages */}
           {error && (
             <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-bold">
               {error}
             </div>
           )}
 
-          {/* Form */}
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-zinc-800 mb-1.5">
-                نام کاربری
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder={selectedRole === 'admin' ? 'amouei' : 'tolid'}
-                  className="w-full bg-zinc-50 border border-zinc-300 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 rounded-xl px-3.5 py-2.5 text-zinc-900 text-sm outline-none transition font-mono dir-ltr text-right"
-                />
-                <User className="w-4 h-4 text-zinc-400 absolute left-3 top-3 pointer-events-none" />
-              </div>
+          {successMsg && (
+            <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-700 font-bold flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{successMsg}</span>
             </div>
+          )}
 
-            <div>
-              <label className="block text-xs font-bold text-zinc-800 mb-1.5">
-                رمز عبور
-              </label>
-              <div className="relative">
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-zinc-50 border border-zinc-300 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 rounded-xl px-3.5 py-2.5 text-zinc-900 text-sm outline-none transition font-mono dir-ltr text-right"
-                />
-                <Lock className="w-4 h-4 text-zinc-400 absolute left-3 top-3 pointer-events-none" />
+          {/* FORM: Registration for staff */}
+          {selectedRole === 'production' && authMode === 'register' ? (
+            <form onSubmit={handleRegister} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-zinc-800 mb-1">
+                  نام و نام خانوادگی تولیدکننده / استادکار <span className="text-rose-600">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="مثال: علی احمدی"
+                    className="w-full bg-zinc-50 border border-zinc-300 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 rounded-xl px-3.5 py-2.5 text-zinc-900 text-sm outline-none transition"
+                  />
+                  <User className="w-4 h-4 text-zinc-400 absolute left-3 top-3 pointer-events-none" />
+                </div>
               </div>
-            </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full mt-2 py-3 rounded-xl bg-zinc-950 hover:bg-black text-white text-sm font-black shadow-lg shadow-zinc-950/20 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              {loading ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              ) : (
-                <>
-                  <span>
-                    {selectedRole === 'admin' ? 'ورود مستقیم به گزارشات مدیریت' : 'ورود به فرم ثبت تولید'}
-                  </span>
-                  <ChevronLeft className="w-4 h-4" />
-                </>
+              <div>
+                <label className="block text-xs font-bold text-zinc-800 mb-1">
+                  شماره موبایل شما <span className="text-rose-600">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="tel"
+                    required
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="مثال: 09121234567"
+                    className="w-full bg-zinc-50 border border-zinc-300 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 rounded-xl px-3.5 py-2.5 text-zinc-900 text-sm outline-none transition font-mono dir-ltr text-right"
+                  />
+                  <Phone className="w-4 h-4 text-zinc-400 absolute left-3 top-3 pointer-events-none" />
+                </div>
+                <p className="text-[11px] text-zinc-400 mt-1">شماره موبایل، شناسه ورود شما خواهد بود.</p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-800 mb-1">
+                    رمز عبور انتخابی <span className="text-rose-600">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={regPassword}
+                    onChange={(e) => setRegPassword(e.target.value)}
+                    placeholder="رمز دلخواه"
+                    className="w-full bg-zinc-50 border border-zinc-300 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 rounded-xl px-3.5 py-2.5 text-zinc-900 text-sm outline-none transition font-mono dir-ltr text-right"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-zinc-800 mb-1">
+                    تکرار رمز عبور <span className="text-rose-600">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="تکرار رمز"
+                    className="w-full bg-zinc-50 border border-zinc-300 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 rounded-xl px-3.5 py-2.5 text-zinc-900 text-sm outline-none transition font-mono dir-ltr text-right"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full mt-2 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-black shadow-lg shadow-emerald-600/20 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {loading ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <>
+                    <UserPlus className="w-4 h-4" />
+                    <span>تکمیل ثبت‌نام و ورود به سامانه</span>
+                  </>
+                )}
+              </button>
+            </form>
+          ) : (
+            /* FORM: Login */
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-zinc-800 mb-1.5">
+                  {selectedRole === 'admin' ? 'نام کاربری مدیریت' : 'شماره موبایل ثبت‌شده'}
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder={selectedRole === 'admin' ? 'نام کاربری مدیریت' : 'مثال: 09121234567'}
+                    className="w-full bg-zinc-50 border border-zinc-300 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 rounded-xl px-3.5 py-2.5 text-zinc-900 text-sm outline-none transition font-mono dir-ltr text-right"
+                  />
+                  {selectedRole === 'admin' ? (
+                    <User className="w-4 h-4 text-zinc-400 absolute left-3 top-3 pointer-events-none" />
+                  ) : (
+                    <Phone className="w-4 h-4 text-zinc-400 absolute left-3 top-3 pointer-events-none" />
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-zinc-800 mb-1.5">
+                  رمز عبور
+                </label>
+                <div className="relative">
+                  <input
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-zinc-50 border border-zinc-300 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 rounded-xl px-3.5 py-2.5 text-zinc-900 text-sm outline-none transition font-mono dir-ltr text-right"
+                  />
+                  <Lock className="w-4 h-4 text-zinc-400 absolute left-3 top-3 pointer-events-none" />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full mt-2 py-3 rounded-xl bg-zinc-950 hover:bg-black text-white text-sm font-black shadow-lg shadow-zinc-950/20 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {loading ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <>
+                    <span>
+                      {selectedRole === 'admin' ? 'ورود به پنل مدیریت' : 'ورود به فرم ثبت تولید'}
+                    </span>
+                    <ChevronLeft className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+
+              {/* Toggle to register link for staff */}
+              {selectedRole === 'production' && (
+                <div className="text-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode('register');
+                      setError(null);
+                      setSuccessMsg(null);
+                    }}
+                    className="text-xs text-zinc-600 hover:text-zinc-950 font-bold underline cursor-pointer"
+                  >
+                    حساب کاربری ندارید؟ اینجا ثبت‌نام کنید
+                  </button>
+                </div>
               )}
-            </button>
-          </form>
-
-          {/* Quick Credential Hints for Convenience */}
-          <div className="mt-6 pt-4 border-t border-zinc-100 text-center text-xs text-zinc-500">
-            <div className="font-semibold text-zinc-700 mb-1">اطلاعات ورود پیش‌فرض:</div>
-            <div className="flex justify-center items-center gap-3 font-mono text-[11px] text-zinc-600 bg-zinc-50 p-2 rounded-lg border border-zinc-200">
-              <span>نام کاربری: <strong>{selectedRole === 'admin' ? 'amouei' : 'tolid'}</strong></span>
-              <span>•</span>
-              <span>رمز عبور: <strong>1234</strong></span>
-            </div>
-          </div>
+            </form>
+          )}
 
         </div>
 
-        {/* Footer info */}
-        <p className="text-center text-[11px] text-zinc-500 mt-6">
-          کلیه گزارشات با ارسال فوری به <strong>Mm.moj9267@gmail.com</strong> متصل می‌باشند.
-        </p>
-
       </div>
+
+      {/* Requested Black Footer with creator details & phone */}
+      <footer className="w-full max-w-2xl mx-auto py-4 px-4 bg-zinc-900/90 border border-zinc-800 rounded-2xl text-center text-xs text-zinc-300 relative z-10 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+          <span className="text-zinc-400">تهیه کننده:</span>
+          <strong className="text-white font-bold text-sm">محمدابراهیم محمدی</strong>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-zinc-400">شماره تماس:</span>
+          <a
+            href="tel:09119995002"
+            className="text-amber-400 hover:text-amber-300 font-mono font-black text-sm tracking-wider dir-ltr"
+          >
+            ۰۹۱۱۹۹۹۵۰۰۲
+          </a>
+        </div>
+      </footer>
+
     </div>
   );
 };

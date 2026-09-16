@@ -29,6 +29,7 @@ export interface AuthSession {
   role: UserRole;
   username: string;
   displayName: string;
+  phone?: string;
   token?: string;
 }
 

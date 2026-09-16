@@ -16,10 +16,45 @@ app.use(express.json());
 // Persistent storage file
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DATA_FILE = path.join(DATA_DIR, 'reports.json');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+interface StaffUser {
+  id: string;
+  fullName: string;
+  phone: string; // Used as username / login credential
+  password: string;
+  role: 'production';
+  createdAt: string;
+}
+
+function loadUsers(): StaffUser[] {
+  try {
+    if (!fs.existsSync(USERS_FILE)) {
+      fs.writeFileSync(USERS_FILE, JSON.stringify([], null, 2), 'utf-8');
+      return [];
+    }
+    const raw = fs.readFileSync(USERS_FILE, 'utf-8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.error('Error reading users file:', err);
+    return [];
+  }
+}
+
+function saveUsers(users: StaffUser[]): boolean {
+  try {
+    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf-8');
+    return true;
+  } catch (err) {
+    console.error('Error writing users file:', err);
+    return false;
+  }
 }
 
 interface ReportItem {
@@ -251,10 +286,61 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Registration endpoint for production staff
+app.post('/api/register', (req, res) => {
+  try {
+    const { fullName, phone, password } = req.body;
+    
+    if (!fullName || !fullName.trim()) {
+      return res.status(400).json({ error: 'نام و نام خانوادگی الزامی است.' });
+    }
+    
+    const cleanPhone = (phone || '').toString().trim().replace(/[\s-]/g, '');
+    if (!cleanPhone || cleanPhone.length < 10) {
+      return res.status(400).json({ error: 'شماره موبایل معتبر (حداقل ۱۰ رقم) الزامی است.' });
+    }
+    
+    if (!password || password.toString().trim().length < 3) {
+      return res.status(400).json({ error: 'رمز عبور باید حداقل ۳ کاراکتر باشد.' });
+    }
+
+    const users = loadUsers();
+    // Check if phone already registered
+    const existing = users.find((u) => u.phone === cleanPhone);
+    if (existing) {
+      return res.status(400).json({ error: 'این شماره موبایل قبلاً ثبت نام شده است. لطفاً وارد شوید.' });
+    }
+
+    const newUser: StaffUser = {
+      id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      fullName: fullName.trim(),
+      phone: cleanPhone,
+      password: password.toString().trim(),
+      role: 'production',
+      createdAt: new Date().toISOString(),
+    };
+
+    users.push(newUser);
+    saveUsers(users);
+
+    return res.status(201).json({
+      success: true,
+      role: 'production',
+      username: newUser.phone,
+      displayName: newUser.fullName,
+      phone: newUser.phone,
+      message: 'ثبت‌نام با موفقیت انجام شد.',
+    });
+  } catch (err: any) {
+    console.error('Register error:', err);
+    return res.status(500).json({ error: 'خطا در ثبت نام کاربر: ' + err.message });
+  }
+});
+
 // Authentication endpoint for Production Staff vs Management (Owner)
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
-  const u = (username || '').toString().trim().toLowerCase();
+  const u = (username || '').toString().trim().toLowerCase().replace(/[\s-]/g, '');
   const p = (password || '').toString().trim();
 
   // 1. Management / Owner (Amouei)
@@ -270,7 +356,20 @@ app.post('/api/login', (req, res) => {
     });
   }
 
-  // 2. Production Staff / Workshop Manager
+  // 2. Check registered production users by phone number
+  const users = loadUsers();
+  const matchedUser = users.find((user) => user.phone === u || user.phone.endsWith(u));
+  if (matchedUser && matchedUser.password === p) {
+    return res.json({
+      success: true,
+      role: 'production',
+      username: matchedUser.phone,
+      displayName: matchedUser.fullName,
+      phone: matchedUser.phone,
+    });
+  }
+
+  // 3. Fallback default account for workshop manager convenience (tolid / 1234)
   if (
     (u === 'tolid' || u === 'kargah' || u === 'پرسنل' || u === 'مدیر تولید' || u === 'user') &&
     (p === '1234' || p === 'tolid1234' || p === 'kargah')
@@ -283,26 +382,8 @@ app.post('/api/login', (req, res) => {
     });
   }
 
-  // Fallback check if user just enters "1234" password for quick convenience
-  if (p === '1234') {
-    if (u.includes('مدیر') || u.includes('عمویی') || u.includes('admin')) {
-      return res.json({
-        success: true,
-        role: 'admin',
-        username: 'amouei',
-        displayName: 'مدیریت مجموعه (آقای عمویی)',
-      });
-    }
-    return res.json({
-      success: true,
-      role: 'production',
-      username: 'tolid',
-      displayName: 'پرسنل و مدیر کارگاه تولید',
-    });
-  }
-
   return res.status(401).json({
-    error: 'نام کاربری یا رمز عبور اشتباه است.',
+    error: 'شماره موبایل یا رمز عبور اشتباه است.',
   });
 });
 

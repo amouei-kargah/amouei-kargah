@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ClipboardList, BarChart3, FileSpreadsheet, Mail, ShieldCheck, LogOut, Copy, Check, User, Share2 } from 'lucide-react';
 import { AuthSession } from '../types';
+import { BrandLogo } from './BrandLogo';
 
 interface NavbarProps {
   activeTab: 'entry' | 'reports' | 'accounting' | 'googlesheets';
@@ -34,8 +35,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Brand & Workshop Info */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-700 flex items-center justify-center text-white shadow-inner font-black text-xl">
-                🪵
+              <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-700 flex items-center justify-center p-1.5 shadow-inner">
+                <BrandLogo className="w-full h-full" />
               </div>
               <div>
                 <h1 className="font-black text-base sm:text-lg text-white tracking-tight leading-none">

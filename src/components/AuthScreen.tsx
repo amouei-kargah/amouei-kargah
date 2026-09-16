@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Lock, User, ShieldCheck, Wrench, ChevronLeft, Phone, UserPlus, LogIn, CheckCircle } from 'lucide-react';
 import { AuthSession, UserRole } from '../types';
 import { registerUser, loginUser } from '../services/storageService';
+import { BrandLogo } from './BrandLogo';
 
 interface AuthScreenProps {
   onLoginSuccess: (session: AuthSession) => void;
@@ -128,8 +129,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, defaultR
         
         {/* Brand Header */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-zinc-900 border border-zinc-700 text-white shadow-xl mb-3 text-2xl font-black">
-            🪵
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-zinc-900 border border-zinc-700 p-2.5 text-white shadow-xl mb-3">
+            <BrandLogo className="w-full h-full" />
           </div>
           <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
             مجموعه دکوراسیون داخلی و کابینت عمویی

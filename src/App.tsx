@@ -7,6 +7,7 @@ import { GoogleSheetsIntegration } from './components/GoogleSheetsIntegration';
 import { AuthScreen } from './components/AuthScreen';
 import { ShareVisualGuide } from './components/ShareVisualGuide';
 import { DailyReport, AuthSession, UserRole } from './types';
+import { fetchAllReports, deleteReportById } from './services/storageService';
 
 export default function App() {
   // Session authentication state
@@ -44,19 +45,17 @@ export default function App() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // Fetch reports from server
+  // Fetch reports safely with hybrid offline/online support
   const fetchReports = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch('/api/reports');
-      if (!res.ok) throw new Error('خطا در دریافت لیست گزارشات از سرور');
-      const data = await res.json();
-      setReports(data.reports || []);
-      if (data.targetEmail) setTargetEmail(data.targetEmail);
+      const result = await fetchAllReports();
+      setReports(result.reports);
+      if (result.targetEmail) setTargetEmail(result.targetEmail);
       setFetchError(null);
     } catch (err: any) {
       console.error('Fetch reports error:', err);
-      setFetchError(err.message || 'خطا در ارتباط با سرور');
+      setFetchError(err.message || 'خطا در بارگذاری گزارشات');
     } finally {
       setIsLoading(false);
     }
@@ -116,11 +115,10 @@ export default function App() {
     }
   };
 
-  // Delete a report
+  // Delete a report safely
   const handleDeleteReport = async (id: string) => {
     try {
-      const res = await fetch(`/api/reports/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('خطا در حذف گزارش');
+      await deleteReportById(id);
       setReports((prev) => prev.filter((r) => r.id !== id));
     } catch (err: any) {
       alert(err.message || 'خطا در حذف گزارش');

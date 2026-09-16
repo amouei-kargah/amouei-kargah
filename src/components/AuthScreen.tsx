@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, User, ShieldCheck, Wrench, ChevronLeft, Phone, UserPlus, LogIn, CheckCircle } from 'lucide-react';
 import { AuthSession, UserRole } from '../types';
+import { registerUser, loginUser } from '../services/storageService';
 
 interface AuthScreenProps {
   onLoginSuccess: (session: AuthSession) => void;
@@ -46,31 +47,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, defaultR
     setLoading(true);
 
     try {
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'اطلاعات ورود نادرست است.');
-      }
-
-      const session: AuthSession = {
-        role: data.role,
-        username: data.username,
-        displayName: data.displayName,
-        phone: data.phone,
-      };
+      const session = await loginUser({ username, password });
 
       localStorage.setItem('amouei_cabinet_session', JSON.stringify(session));
-      if (data.displayName && data.role === 'production') {
-        localStorage.setItem('amouei_manager_name', data.displayName);
+      if (session.displayName && session.role === 'production') {
+        localStorage.setItem('amouei_manager_name', session.displayName);
       }
-      if (data.phone && data.role === 'production') {
-        localStorage.setItem('amouei_manager_phone', data.phone);
+      if (session.phone && session.role === 'production') {
+        localStorage.setItem('amouei_manager_phone', session.phone);
       }
 
       onLoginSuccess(session);
@@ -110,32 +94,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, defaultR
     setLoading(true);
 
     try {
-      const res = await fetch('/api/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fullName: fullName.trim(),
-          phone: cleanPhone,
-          password: regPassword,
-        }),
+      const session = await registerUser({
+        fullName: fullName.trim(),
+        phone: cleanPhone,
+        password: regPassword,
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'خطا در ثبت‌نام');
-      }
-
-      const session: AuthSession = {
-        role: 'production',
-        username: data.username,
-        displayName: data.displayName,
-        phone: data.phone,
-      };
-
       localStorage.setItem('amouei_cabinet_session', JSON.stringify(session));
-      localStorage.setItem('amouei_manager_name', data.displayName);
-      localStorage.setItem('amouei_manager_phone', data.phone);
+      localStorage.setItem('amouei_manager_name', session.displayName);
+      if (session.phone) {
+        localStorage.setItem('amouei_manager_phone', session.phone);
+      }
 
       setSuccessMsg('ثبت‌نام شما با موفقیت انجام شد! در حال ورود به سیستم...');
       setTimeout(() => {

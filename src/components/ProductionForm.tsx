@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Send, CheckCircle2, AlertCircle, Sparkles, Building2, Package, Calendar, User, Phone, FileText, Check } from 'lucide-react';
 import { ReportItem, CABINET_MATERIALS_SUGGESTIONS, CABINET_UNITS, DailyReport } from '../types';
 import { getTodayJalaliString } from '../utils/persianDate';
+import { submitDailyReport } from '../services/storageService';
 
 interface ProductionFormProps {
   onReportSubmitted: (newReport: DailyReport) => void;
@@ -148,33 +149,23 @@ export const ProductionForm: React.FC<ProductionFormProps> = ({
     setIsSubmitting(true);
 
     try {
-      const response = await fetch('/api/reports', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          managerName: managerName.trim(),
-          managerPhone: cleanPhone,
-          reportDate: reportDate.trim(),
-          notes: notes.trim(),
-          items: items.map((it) => ({
-            ...it,
-            itemName: it.itemName.trim(),
-            quantity: Number(it.quantity),
-            unit: it.unit.trim(),
-            projectName: it.projectName.trim(),
-            notes: it.notes?.trim() || '',
-          })),
-        }),
+      const savedReport = await submitDailyReport({
+        managerName: managerName.trim(),
+        managerPhone: cleanPhone,
+        reportDate: reportDate.trim(),
+        notes: notes.trim(),
+        items: items.map((it) => ({
+          ...it,
+          itemName: it.itemName.trim(),
+          quantity: Number(it.quantity),
+          unit: it.unit.trim(),
+          projectName: it.projectName.trim(),
+          notes: it.notes?.trim() || '',
+        })),
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'خطا در ثبت گزارش');
-      }
-
-      setSuccessReport(data.report);
-      onReportSubmitted(data.report);
+      setSuccessReport(savedReport);
+      onReportSubmitted(savedReport);
 
       // Reset items for next entry but keep manager name, phone, and date
       setItems([

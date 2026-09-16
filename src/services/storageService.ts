@@ -12,24 +12,6 @@ export interface StaffAccount {
 const REGISTERED_USERS_KEY = 'amouei_registered_users';
 const LOCAL_REPORTS_KEY = 'amouei_local_reports';
 
-// Helper to safely parse JSON from a fetch response without crashing on HTML 404
-async function safeJsonParse(response: Response): Promise<any> {
-  const contentType = response.headers.get('content-type') || '';
-  const text = await response.text();
-  if (contentType.includes('application/json')) {
-    try {
-      return JSON.parse(text);
-    } catch {
-      return null;
-    }
-  }
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
-
 // -----------------------------------------------------------------------------
 // USER ACCOUNTS & AUTH
 // -----------------------------------------------------------------------------
@@ -66,7 +48,14 @@ export async function registerUser(params: {
   const cleanFullName = params.fullName.trim();
   const password = params.password.trim();
 
-  // 1. First attempt to call the backend server API
+  // 1. First, check if this phone number is already registered in local storage
+  const localUsers = getLocalUsers();
+  const existingLocal = localUsers.find((u) => u.phone.replace(/[\s-]/g, '') === cleanPhone);
+  if (existingLocal) {
+    throw new Error('این شماره موبایل قبلاً در سامانه ثبت‌نام شده است. لطفاً از تب «ورود با شماره موبایل» وارد شوید.');
+  }
+
+  // 2. Try registering to server API if backend exists, wrapped with total safety
   try {
     const res = await fetch('/api/register', {
       method: 'POST',
@@ -78,46 +67,22 @@ export async function registerUser(params: {
       }),
     });
 
-    const data = await safeJsonParse(res);
-
-    if (res.ok && data?.success) {
-      const session: AuthSession = {
-        role: 'production',
-        username: data.username || cleanPhone,
-        displayName: data.displayName || cleanFullName,
-        phone: data.phone || cleanPhone,
-      };
-      // Backup to localStorage
-      saveLocalUser({
-        id: `usr_${Date.now()}`,
-        fullName: cleanFullName,
-        phone: cleanPhone,
-        password,
-        role: 'production',
-        createdAt: new Date().toISOString(),
-      });
-      return session;
-    }
-
-    // If server responded with a deliberate error (like phone already registered)
-    if (!res.ok && data?.error) {
-      throw new Error(data.error);
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const data = await res.json();
+      if (!res.ok && data?.error) {
+        throw new Error(data.error);
+      }
     }
   } catch (err: any) {
-    // If it was a deliberate error from the server (e.g. user already exists), rethrow
-    if (err.message && !err.message.includes('Unexpected') && !err.message.includes('fetch')) {
+    // If backend returned a specific logical error (like phone already registered on server), rethrow it
+    if (err.message && !err.message.includes('JSON') && !err.message.includes('fetch') && !err.message.includes('NetworkError')) {
       throw err;
     }
-    // Otherwise it was a network error or 404 (Vercel static deploy), continue to local storage
+    // Otherwise it was an HTML page / static host response (e.g. Vercel) -> proceed seamlessly to local storage
   }
 
-  // 2. Fallback / Client-side persistence for Vercel Static Deployments
-  const localUsers = getLocalUsers();
-  const existing = localUsers.find((u) => u.phone.replace(/[\s-]/g, '') === cleanPhone);
-  if (existing) {
-    throw new Error('این شماره موبایل قبلاً در سامانه ثبت‌نام شده است. لطفاً از تب «ورود با شماره موبایل» وارد شوید.');
-  }
-
+  // 3. Save locally in client storage (guarantees 100% success on Vercel and any host)
   const newAccount: StaffAccount = {
     id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
     fullName: cleanFullName,
@@ -144,39 +109,11 @@ export async function loginUser(params: {
   const u = (params.username || '').toString().trim().toLowerCase().replace(/[\s-]/g, '');
   const p = (params.password || '').toString().trim();
 
-  // 1. First attempt to call the backend server API
-  try {
-    const res = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: u, password: p }),
-    });
-
-    const data = await safeJsonParse(res);
-
-    if (res.ok && data?.success) {
-      return {
-        role: data.role,
-        username: data.username,
-        displayName: data.displayName,
-        phone: data.phone,
-      };
-    }
-
-    if (!res.ok && data?.error) {
-      throw new Error(data.error);
-    }
-  } catch (err: any) {
-    if (err.message && !err.message.includes('Unexpected') && !err.message.includes('fetch')) {
-      throw err;
-    }
-  }
-
-  // 2. Fallback / Client-side authentication for Vercel Static Deployments
-  // Admin check (Management / Amouei)
+  // 1. Management Check (Admin / Amouei)
+  // Username: amouei | Password: 34503450 (or 1234)
   if (
-    (u === 'admin' || u === 'amouei' || u === 'عمویی' || u === 'مدیریت') &&
-    (p === '1234' || p === 'amouei1234' || p === 'admin')
+    (u === 'amouei' || u === 'admin' || u === 'عمویی' || u === 'مدیریت') &&
+    (p === '34503450' || p === '1234' || p === 'amouei1234' || p === 'admin')
   ) {
     return {
       role: 'admin',
@@ -185,23 +122,56 @@ export async function loginUser(params: {
     };
   }
 
-  // Check locally registered accounts by phone number
+  // 2. Check locally registered accounts by phone number
   const localUsers = getLocalUsers();
   const matched = localUsers.find((user) => {
     const userPhone = user.phone.replace(/[\s-]/g, '');
     return userPhone === u || userPhone.endsWith(u);
   });
 
-  if (matched && matched.password === p) {
-    return {
-      role: 'production',
-      username: matched.phone,
-      displayName: matched.fullName,
-      phone: matched.phone,
-    };
+  if (matched) {
+    if (matched.password === p) {
+      return {
+        role: 'production',
+        username: matched.phone,
+        displayName: matched.fullName,
+        phone: matched.phone,
+      };
+    } else {
+      throw new Error('رمز عبور وارد شده نادرست است.');
+    }
   }
 
-  // Fallback demo/workshop manager account
+  // 3. Try backend API if present
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: u, password: p }),
+    });
+
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const data = await res.json();
+      if (res.ok && data?.success) {
+        return {
+          role: data.role,
+          username: data.username,
+          displayName: data.displayName,
+          phone: data.phone,
+        };
+      }
+      if (!res.ok && data?.error) {
+        throw new Error(data.error);
+      }
+    }
+  } catch (err: any) {
+    if (err.message && !err.message.includes('JSON') && !err.message.includes('fetch')) {
+      throw err;
+    }
+  }
+
+  // 4. Fallback demo / default workshop manager account
   if (
     (u === 'tolid' || u === 'kargah' || u === 'پرسنل' || u === 'مدیر تولید' || u === 'user') &&
     (p === '1234' || p === 'tolid1234' || p === 'kargah')
@@ -213,7 +183,7 @@ export async function loginUser(params: {
     };
   }
 
-  throw new Error('شماره موبایل یا رمز عبور نادرست است.');
+  throw new Error('شماره موبایل یا رمز عبور اشتباه است.');
 }
 
 // -----------------------------------------------------------------------------
@@ -246,8 +216,9 @@ export async function fetchAllReports(): Promise<{ reports: DailyReport[]; targe
 
   try {
     const res = await fetch('/api/reports');
-    if (res.ok) {
-      const data = await safeJsonParse(res);
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.includes('application/json')) {
+      const data = await res.json();
       if (data?.reports && Array.isArray(data.reports)) {
         serverReports = data.reports;
       }
@@ -293,26 +264,27 @@ export async function submitDailyReport(reportData: {
     createdAt: new Date().toISOString(),
   };
 
-  // 1. Immediately store in local cache so user never loses their data!
+  // 1. Immediately store in local cache so user never loses their data
   const current = getLocalReports();
   const updated = [newReport, ...current];
   saveLocalReports(updated);
 
-  // 2. Synchronize to server if available
+  // 2. Synchronize to server if backend exists
   try {
     const res = await fetch('/api/reports', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(reportData),
     });
-    if (res.ok) {
-      const data = await safeJsonParse(res);
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.includes('application/json')) {
+      const data = await res.json();
       if (data?.report) {
         return data.report;
       }
     }
   } catch {
-    // Network or static deploy, locally saved report is already safe
+    // Network or static deploy, locally saved report is already completely safe
   }
 
   return newReport;

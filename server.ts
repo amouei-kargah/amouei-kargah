@@ -346,7 +346,7 @@ app.post('/api/login', (req, res) => {
   // 1. Management / Owner (Amouei)
   if (
     (u === 'admin' || u === 'amouei' || u === 'عمویی' || u === 'مدیریت') &&
-    (p === '1234' || p === 'amouei1234' || p === 'admin')
+    (p === '34503450' || p === '1234' || p === 'amouei1234' || p === 'admin')
   ) {
     return res.json({
       success: true,

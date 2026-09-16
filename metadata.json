@@ -1,0 +1,6 @@
+{
+  "name": "مجموعه دکوراسیون داخلی و کابینت عمویی",
+  "description": "سامانه گزارش تولید روزانه مجموعه دکوراسیون داخلی و کابینت عمویی با دسترسی اختصاصی پرسنل و مدیریت، خروجی اکسل و ارسال ایمیل",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

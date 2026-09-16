@@ -345,16 +345,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, defaultR
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder={selectedRole === 'admin' ? '۳۴۵۰۳۴۵۰' : '••••••••'}
+                    placeholder="••••••••"
                     className="w-full bg-zinc-50 border border-zinc-300 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 rounded-xl px-3.5 py-2.5 text-zinc-900 text-sm outline-none transition font-mono dir-ltr text-right"
                   />
                   <Lock className="w-4 h-4 text-zinc-400 absolute left-3 top-3 pointer-events-none" />
                 </div>
-                {selectedRole === 'admin' && (
-                  <p className="text-[11px] text-zinc-500 mt-1.5 font-medium">
-                    نام کاربری: <span className="font-mono font-bold text-zinc-900">amouei</span> | رمز عبور: <span className="font-mono font-bold text-zinc-900">34503450</span>
-                  </p>
-                )}
               </div>
 
               <button

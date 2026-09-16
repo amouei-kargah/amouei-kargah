@@ -12,6 +12,7 @@ interface ReportsViewProps {
   onRefresh: () => void;
   onDeleteReport: (id: string) => void;
   targetEmail: string;
+  userRole?: 'admin' | 'production';
 }
 
 export const ReportsView: React.FC<ReportsViewProps> = ({
@@ -19,6 +20,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   onRefresh,
   onDeleteReport,
   targetEmail,
+  userRole = 'production',
 }) => {
   // Filters
   const [selectedDate, setSelectedDate] = useState<string>('');
@@ -133,15 +135,17 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               چاپ برگه
             </button>
 
-            <button
-              id="btn-download-excel"
-              type="button"
-              onClick={handleDownloadExcel}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-black bg-zinc-950 hover:bg-black text-white shadow-lg shadow-zinc-950/20 transition active:scale-98 cursor-pointer"
-            >
-              <Download className="w-4 h-4 text-emerald-400" />
-              دریافت فایل اکسل (.xlsx)
-            </button>
+            {userRole === 'admin' && (
+              <button
+                id="btn-download-excel"
+                type="button"
+                onClick={handleDownloadExcel}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-black bg-zinc-950 hover:bg-black text-white shadow-lg shadow-zinc-950/20 transition active:scale-98 cursor-pointer"
+              >
+                <Download className="w-4 h-4 text-emerald-400" />
+                دریافت فایل اکسل (.xlsx)
+              </button>
+            )}
           </div>
         </div>
 

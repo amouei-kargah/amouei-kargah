@@ -7,6 +7,14 @@ export function toPersianDigits(n: number | string): string {
   return n.toString().replace(/[0-9]/g, (w) => farsiDigits[+w]);
 }
 
+// Convert Persian or Arabic numbers back to English digits
+export function normalizeDigits(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 1776))
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632));
+}
+
 // Convert Gregorian date to Jalali date string (YYYY/MM/DD)
 export function getTodayJalaliString(): string {
   try {
@@ -21,13 +29,9 @@ export function getTodayJalaliString(): string {
     const month = parts.find((p) => p.type === 'month')?.value || '';
     const day = parts.find((p) => p.type === 'day')?.value || '';
 
-    // Convert Persian numbers back to English digits for standard input format (e.g. 1403/06/26)
-    const toEnDigits = (str: string) =>
-      str.replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 1776));
-
-    const y = toEnDigits(year);
-    const m = toEnDigits(month).padStart(2, '0');
-    const d = toEnDigits(day).padStart(2, '0');
+    const y = normalizeDigits(year);
+    const m = normalizeDigits(month).padStart(2, '0');
+    const d = normalizeDigits(day).padStart(2, '0');
 
     return `${y}/${m}/${d}`;
   } catch {

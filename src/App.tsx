@@ -5,7 +5,6 @@ import { ReportsView } from './components/ReportsView';
 import { AccountingSummary } from './components/AccountingSummary';
 import { GoogleSheetsIntegration } from './components/GoogleSheetsIntegration';
 import { AuthScreen } from './components/AuthScreen';
-import { ShareVisualGuide } from './components/ShareVisualGuide';
 import { DailyReport, AuthSession, UserRole } from './types';
 import { fetchAllReports, deleteReportById } from './services/storageService';
 
@@ -35,7 +34,7 @@ export default function App() {
   }, []);
 
   // Set active tab according to role: Management goes directly to 'reports', production to 'entry'
-  const [activeTab, setActiveTab] = useState<'entry' | 'reports' | 'accounting' | 'googlesheets' | 'shareguide'>(() => {
+  const [activeTab, setActiveTab] = useState<'entry' | 'reports' | 'accounting' | 'googlesheets'>(() => {
     if (session?.role === 'admin') return 'reports';
     return 'entry';
   });
@@ -178,19 +177,16 @@ export default function App() {
                 onRefresh={fetchReports}
                 onDeleteReport={handleDeleteReport}
                 targetEmail={targetEmail}
+                userRole={session.role}
               />
             )}
 
-            {activeTab === 'accounting' && (
+            {activeTab === 'accounting' && session.role === 'admin' && (
               <AccountingSummary reports={reports} />
             )}
 
-            {activeTab === 'googlesheets' && (
+            {activeTab === 'googlesheets' && session.role === 'admin' && (
               <GoogleSheetsIntegration targetEmail={targetEmail} />
-            )}
-
-            {activeTab === 'shareguide' && (
-              <ShareVisualGuide />
             )}
           </>
         )}

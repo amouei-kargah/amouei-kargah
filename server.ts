@@ -337,17 +337,44 @@ app.post('/api/register', (req, res) => {
   }
 });
 
+// Convert Persian or Arabic digits to English
+function normalizeDigits(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 1776))
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632));
+}
+
 // Authentication endpoint for Production Staff vs Management (Owner)
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
-  const u = (username || '').toString().trim().toLowerCase().replace(/[\s-]/g, '');
-  const p = (password || '').toString().trim();
+  const rawU = (username || '').toString().trim();
+  const rawP = (password || '').toString().trim();
+  const u = normalizeDigits(rawU).toLowerCase().replace(/[\s-]/g, '');
+  const p = normalizeDigits(rawP).replace(/[\s-]/g, '');
 
   // 1. Management / Owner (Amouei)
-  if (
-    (u === 'admin' || u === 'amouei' || u === 'عمویی' || u === 'مدیریت') &&
-    (p === '34503450' || p === '1234' || p === 'amouei1234' || p === 'admin')
-  ) {
+  const isAdminUser =
+    u === 'admin' ||
+    u === 'amouei' ||
+    u === 'عمویی' ||
+    u === 'مدیریت' ||
+    rawU === 'amouei' ||
+    rawU === 'عمویی' ||
+    rawU === 'مدیریت' ||
+    u.includes('amouei') ||
+    u.includes('عمویی');
+
+  const isAdminPass =
+    p === '34503450' ||
+    p === '1234' ||
+    p === 'amouei1234' ||
+    p === 'admin' ||
+    rawP === '۳۴۵۰۳۴۵۰' ||
+    rawP === '34503450' ||
+    rawP === '1234';
+
+  if (isAdminUser && isAdminPass) {
     return res.json({
       success: true,
       role: 'admin',
@@ -358,15 +385,21 @@ app.post('/api/login', (req, res) => {
 
   // 2. Check registered production users by phone number
   const users = loadUsers();
-  const matchedUser = users.find((user) => user.phone === u || user.phone.endsWith(u));
-  if (matchedUser && matchedUser.password === p) {
-    return res.json({
-      success: true,
-      role: 'production',
-      username: matchedUser.phone,
-      displayName: matchedUser.fullName,
-      phone: matchedUser.phone,
-    });
+  const matchedUser = users.find((user) => {
+    const userPhone = normalizeDigits(user.phone).replace(/[\s-]/g, '');
+    return userPhone === u || userPhone.endsWith(u);
+  });
+  if (matchedUser) {
+    const matchedPassNorm = normalizeDigits(matchedUser.password).replace(/[\s-]/g, '');
+    if (matchedPassNorm === p || matchedUser.password === rawP) {
+      return res.json({
+        success: true,
+        role: 'production',
+        username: matchedUser.phone,
+        displayName: matchedUser.fullName,
+        phone: matchedUser.phone,
+      });
+    }
   }
 
   // 3. Fallback default account for workshop manager convenience (tolid / 1234)
@@ -383,7 +416,7 @@ app.post('/api/login', (req, res) => {
   }
 
   return res.status(401).json({
-    error: 'شماره موبایل یا رمز عبور اشتباه است.',
+    error: 'نام کاربری یا رمز عبور اشتباه است.',
   });
 });
 

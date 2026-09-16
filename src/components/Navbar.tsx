@@ -3,8 +3,8 @@ import { ClipboardList, BarChart3, FileSpreadsheet, Mail, ShieldCheck, LogOut, C
 import { AuthSession } from '../types';
 
 interface NavbarProps {
-  activeTab: 'entry' | 'reports' | 'accounting' | 'googlesheets' | 'shareguide';
-  setActiveTab: (tab: 'entry' | 'reports' | 'accounting' | 'googlesheets' | 'shareguide') => void;
+  activeTab: 'entry' | 'reports' | 'accounting' | 'googlesheets';
+  setActiveTab: (tab: 'entry' | 'reports' | 'accounting' | 'googlesheets') => void;
   reportsCount: number;
   session: AuthSession;
   onLogout: () => void;
@@ -83,7 +83,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span>فرم ثبت تولید</span>
               </button>
 
-              {/* Reports and Excel Tab */}
+              {/* Reports Tab */}
               <button
                 id="tab-reports"
                 type="button"
@@ -95,7 +95,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}
               >
                 <BarChart3 className="w-4 h-4" />
-                <span>گزارشات روزانه و اکسل</span>
+                <span>{session.role === 'admin' ? 'گزارشات کارگاه و خروجی اکسل' : 'مشاهده گزارشات روزانه'}</span>
                 {reportsCount > 0 && (
                   <span className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono font-black ${
                     activeTab === 'reports' ? 'bg-zinc-900 text-white' : 'bg-zinc-800 text-zinc-300'
@@ -105,50 +105,39 @@ export const Navbar: React.FC<NavbarProps> = ({
                 )}
               </button>
 
-              {/* Accounting Tab */}
-              <button
-                id="tab-accounting"
-                type="button"
-                onClick={() => setActiveTab('accounting')}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
-                  activeTab === 'accounting'
-                    ? 'bg-white text-zinc-950 shadow-sm'
-                    : 'text-zinc-300 hover:text-white hover:bg-zinc-900'
-                }`}
-              >
-                <FileSpreadsheet className="w-4 h-4" />
-                <span>تفکیک حسابداری پروژه‌ها</span>
-              </button>
+              {/* Accounting Tab - Only for Admin */}
+              {session.role === 'admin' && (
+                <button
+                  id="tab-accounting"
+                  type="button"
+                  onClick={() => setActiveTab('accounting')}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
+                    activeTab === 'accounting'
+                      ? 'bg-white text-zinc-950 shadow-sm'
+                      : 'text-zinc-300 hover:text-white hover:bg-zinc-900'
+                  }`}
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                  <span>تفکیک حسابداری پروژه‌ها (مدیریت)</span>
+                </button>
+              )}
 
-              {/* Share Visual Guide Tab */}
-              <button
-                id="tab-shareguide"
-                type="button"
-                onClick={() => setActiveTab('shareguide')}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                  activeTab === 'shareguide'
-                    ? 'bg-amber-400 text-zinc-950 shadow-sm'
-                    : 'text-amber-300 hover:text-white hover:bg-zinc-900 border border-amber-400/40'
-                }`}
-              >
-                <Share2 className="w-3.5 h-3.5" />
-                <span>آموزش تصویری رفع ۴۰۳</span>
-              </button>
-
-              {/* Google Sheets Tab */}
-              <button
-                id="tab-googlesheets"
-                type="button"
-                onClick={() => setActiveTab('googlesheets')}
-                className={`hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
-                  activeTab === 'googlesheets'
-                    ? 'bg-white text-zinc-950 shadow-sm'
-                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
-                }`}
-              >
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span>اتصال گوگل شیت</span>
-              </button>
+              {/* Google Sheets Tab - Only for Admin */}
+              {session.role === 'admin' && (
+                <button
+                  id="tab-googlesheets"
+                  type="button"
+                  onClick={() => setActiveTab('googlesheets')}
+                  className={`hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
+                    activeTab === 'googlesheets'
+                      ? 'bg-white text-zinc-950 shadow-sm'
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
+                  }`}
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>اتصال گوگل شیت</span>
+                </button>
+              )}
             </nav>
 
             {/* User Session & Logout */}

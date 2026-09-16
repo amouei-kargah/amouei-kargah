@@ -1,4 +1,5 @@
 import { AuthSession, DailyReport, ReportItem } from '../types';
+import { normalizeDigits } from '../utils/persianDate';
 
 export interface StaffAccount {
   id: string;
@@ -106,15 +107,36 @@ export async function loginUser(params: {
   username: string;
   password: string;
 }): Promise<AuthSession> {
-  const u = (params.username || '').toString().trim().toLowerCase().replace(/[\s-]/g, '');
-  const p = (params.password || '').toString().trim();
+  const rawU = (params.username || '').toString().trim();
+  const rawP = (params.password || '').toString().trim();
+
+  // Normalize Persian and Arabic digits to English digits
+  const normU = normalizeDigits(rawU).toLowerCase().replace(/[\s-]/g, '');
+  const normP = normalizeDigits(rawP).replace(/[\s-]/g, '');
 
   // 1. Management Check (Admin / Amouei)
   // Username: amouei | Password: 34503450 (or 1234)
-  if (
-    (u === 'amouei' || u === 'admin' || u === 'عمویی' || u === 'مدیریت') &&
-    (p === '34503450' || p === '1234' || p === 'amouei1234' || p === 'admin')
-  ) {
+  const isAdminUser =
+    normU === 'amouei' ||
+    normU === 'admin' ||
+    normU === 'عمویی' ||
+    normU === 'مدیریت' ||
+    rawU === 'amouei' ||
+    rawU === 'عمویی' ||
+    rawU === 'مدیریت' ||
+    normU.includes('amouei') ||
+    normU.includes('عمویی');
+
+  const isAdminPass =
+    normP === '34503450' ||
+    normP === '1234' ||
+    normP === 'amouei1234' ||
+    normP === 'admin' ||
+    rawP === '۳۴۵۰۳۴۵۰' ||
+    rawP === '34503450' ||
+    rawP === '1234';
+
+  if (isAdminUser && isAdminPass) {
     return {
       role: 'admin',
       username: 'amouei',
@@ -125,12 +147,17 @@ export async function loginUser(params: {
   // 2. Check locally registered accounts by phone number
   const localUsers = getLocalUsers();
   const matched = localUsers.find((user) => {
-    const userPhone = user.phone.replace(/[\s-]/g, '');
-    return userPhone === u || userPhone.endsWith(u);
+    const userPhone = normalizeDigits(user.phone).replace(/[\s-]/g, '');
+    return (
+      userPhone === normU ||
+      userPhone.endsWith(normU) ||
+      (normU.length >= 10 && userPhone.includes(normU.slice(-10)))
+    );
   });
 
   if (matched) {
-    if (matched.password === p) {
+    const matchedPassNorm = normalizeDigits(matched.password).replace(/[\s-]/g, '');
+    if (matchedPassNorm === normP || matched.password === rawP) {
       return {
         role: 'production',
         username: matched.phone,
@@ -147,7 +174,7 @@ export async function loginUser(params: {
     const res = await fetch('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: u, password: p }),
+      body: JSON.stringify({ username: normU, password: normP }),
     });
 
     const contentType = res.headers.get('content-type') || '';
@@ -173,8 +200,8 @@ export async function loginUser(params: {
 
   // 4. Fallback demo / default workshop manager account
   if (
-    (u === 'tolid' || u === 'kargah' || u === 'پرسنل' || u === 'مدیر تولید' || u === 'user') &&
-    (p === '1234' || p === 'tolid1234' || p === 'kargah')
+    (normU === 'tolid' || normU === 'kargah' || normU === 'پرسنل' || normU === 'مدیر تولید' || normU === 'user') &&
+    (normP === '1234' || normP === 'tolid1234' || normP === 'kargah')
   ) {
     return {
       role: 'production',

@@ -6,7 +6,7 @@ import { AccountingSummary } from './components/AccountingSummary';
 import { GoogleSheetsIntegration } from './components/GoogleSheetsIntegration';
 import { AuthScreen } from './components/AuthScreen';
 import { DailyReport, AuthSession, UserRole } from './types';
-import { fetchAllReports, deleteReportById } from './services/storageService';
+import { fetchAllReports, deleteReportById, syncWithServer } from './services/storageService';
 
 export default function App() {
   // Session authentication state
@@ -66,6 +66,8 @@ export default function App() {
   };
 
   useEffect(() => {
+    // Immediate background sync on app load so new devices get the latest registered users
+    syncWithServer().catch(() => {});
     if (session) {
       fetchReports();
     }

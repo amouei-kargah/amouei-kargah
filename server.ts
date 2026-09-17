@@ -13,10 +13,29 @@ const PORT = 3000;
 
 app.use(express.json());
 
+// Enable CORS for all origins (supports dev preview, shared URL, and external mobile devices)
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 // Persistent storage file
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DATA_FILE = path.join(DATA_DIR, 'reports.json');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
+
+// Helper to convert Persian or Arabic digits to English
+function normalizeDigits(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 1776))
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632));
+}
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
@@ -32,18 +51,50 @@ interface StaffUser {
   createdAt: string;
 }
 
+const DEFAULT_STAFF_USERS: StaffUser[] = [
+  {
+    id: 'usr_seed_1',
+    fullName: 'محمدابراهیم محمدی',
+    phone: '09119995002',
+    password: '1234',
+    role: 'production',
+    createdAt: '2026-09-15T12:00:00.000Z',
+  },
+  {
+    id: 'usr_seed_2',
+    fullName: 'مهندس رضایی',
+    phone: '09121234567',
+    password: '1234',
+    role: 'production',
+    createdAt: '2026-09-15T12:00:00.000Z',
+  },
+  {
+    id: 'usr_seed_3',
+    fullName: 'پرسنل و مدیر کارگاه تولید',
+    phone: 'tolid',
+    password: '1234',
+    role: 'production',
+    createdAt: '2026-09-15T12:00:00.000Z',
+  },
+];
+
 function loadUsers(): StaffUser[] {
   try {
     if (!fs.existsSync(USERS_FILE)) {
-      fs.writeFileSync(USERS_FILE, JSON.stringify([], null, 2), 'utf-8');
-      return [];
+      fs.writeFileSync(USERS_FILE, JSON.stringify(DEFAULT_STAFF_USERS, null, 2), 'utf-8');
+      return DEFAULT_STAFF_USERS;
     }
     const raw = fs.readFileSync(USERS_FILE, 'utf-8');
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed;
+    }
+    // If empty file, populate with default staff
+    fs.writeFileSync(USERS_FILE, JSON.stringify(DEFAULT_STAFF_USERS, null, 2), 'utf-8');
+    return DEFAULT_STAFF_USERS;
   } catch (err) {
     console.error('Error reading users file:', err);
-    return [];
+    return DEFAULT_STAFF_USERS;
   }
 }
 
@@ -295,7 +346,7 @@ app.post('/api/register', (req, res) => {
       return res.status(400).json({ error: 'نام و نام خانوادگی الزامی است.' });
     }
     
-    const cleanPhone = (phone || '').toString().trim().replace(/[\s-]/g, '');
+    const cleanPhone = normalizeDigits((phone || '').toString().trim()).replace(/[\s-]/g, '');
     if (!cleanPhone || cleanPhone.length < 10) {
       return res.status(400).json({ error: 'شماره موبایل معتبر (حداقل ۱۰ رقم) الزامی است.' });
     }
@@ -306,7 +357,7 @@ app.post('/api/register', (req, res) => {
 
     const users = loadUsers();
     // Check if phone already registered
-    const existing = users.find((u) => u.phone === cleanPhone);
+    const existing = users.find((u) => normalizeDigits(u.phone).replace(/[\s-]/g, '') === cleanPhone);
     if (existing) {
       return res.status(400).json({ error: 'این شماره موبایل قبلاً ثبت نام شده است. لطفاً وارد شوید.' });
     }
@@ -337,13 +388,115 @@ app.post('/api/register', (req, res) => {
   }
 });
 
-// Convert Persian or Arabic digits to English
-function normalizeDigits(str: string): string {
-  if (!str) return '';
-  return str
-    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 1776))
-    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632));
-}
+// GET registered staff list for cross-device synchronization
+app.get('/api/users', (req, res) => {
+  const users = loadUsers();
+  res.json({
+    users: users.map((u) => ({
+      id: u.id,
+      fullName: u.fullName,
+      phone: u.phone,
+      role: u.role,
+      createdAt: u.createdAt,
+    })),
+  });
+});
+
+// 2-Way bidirectional sync endpoint for reports and users
+app.post('/api/sync', (req, res) => {
+  try {
+    const { reports: incomingReports, users: incomingUsers } = req.body;
+    let currentReports = loadReports();
+    let currentUsers = loadUsers();
+    let reportsChanged = false;
+    let usersChanged = false;
+
+    // 1. Sync reports
+    if (Array.isArray(incomingReports) && incomingReports.length > 0) {
+      const repMap = new Map<string, DailyReport>();
+      currentReports.forEach((r) => repMap.set(r.id, r));
+      
+      incomingReports.forEach((r) => {
+        if (r && r.items && Array.isArray(r.items) && r.items.length > 0) {
+          // Check if report ID already exists
+          if (r.id && repMap.has(r.id)) {
+            return;
+          }
+          // Also check by date + managerPhone + items to avoid duplicate entries with different IDs
+          const isDuplicate = Array.from(repMap.values()).some((existing) => {
+            const sameDate = existing.reportDate === r.reportDate;
+            const samePhone = normalizeDigits(existing.managerPhone || '').replace(/[\s-]/g, '') === normalizeDigits(r.managerPhone || '').replace(/[\s-]/g, '');
+            const sameFirstItem = existing.items[0]?.itemName === r.items[0]?.itemName && Number(existing.items[0]?.quantity) === Number(r.items[0]?.quantity);
+            return sameDate && samePhone && sameFirstItem;
+          });
+
+          if (!isDuplicate) {
+            const reportId = r.id || `rep_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+            repMap.set(reportId, {
+              ...r,
+              id: reportId,
+              managerPhone: normalizeDigits(r.managerPhone || '').replace(/[\s-]/g, ''),
+              createdAt: r.createdAt || new Date().toISOString(),
+            });
+            reportsChanged = true;
+          }
+        }
+      });
+      if (reportsChanged) {
+        currentReports = Array.from(repMap.values()).sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        saveReports(currentReports);
+      }
+    }
+
+    // 2. Sync users
+    if (Array.isArray(incomingUsers) && incomingUsers.length > 0) {
+      const userMap = new Map<string, StaffUser>();
+      currentUsers.forEach((u) => {
+        const normP = normalizeDigits(u.phone).replace(/[\s-]/g, '');
+        userMap.set(normP, u);
+      });
+      incomingUsers.forEach((u) => {
+        if (u && u.phone) {
+          const normP = normalizeDigits(u.phone).replace(/[\s-]/g, '');
+          if (!userMap.has(normP)) {
+            userMap.set(normP, {
+              id: u.id || `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+              fullName: u.fullName || 'پرسنل کارگاه',
+              phone: normP,
+              password: u.password ? normalizeDigits(u.password).replace(/[\s-]/g, '') : '1234',
+              role: 'production',
+              createdAt: u.createdAt || new Date().toISOString(),
+            });
+            usersChanged = true;
+          }
+        }
+      });
+      if (usersChanged) {
+        currentUsers = Array.from(userMap.values());
+        saveUsers(currentUsers);
+      }
+    }
+
+    res.json({
+      success: true,
+      reports: currentReports,
+      users: currentUsers.map((u) => ({
+        id: u.id,
+        fullName: u.fullName,
+        phone: u.phone,
+        password: u.password,
+        role: u.role,
+        createdAt: u.createdAt,
+      })),
+      targetEmail: process.env.NOTIFICATION_EMAIL || 'Mm.moj9267@gmail.com',
+    });
+  } catch (err: any) {
+    console.error('Sync error:', err);
+    res.status(500).json({ error: 'Sync failed: ' + err.message });
+  }
+});
 
 // Authentication endpoint for Production Staff vs Management (Owner)
 app.post('/api/login', (req, res) => {

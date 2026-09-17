@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Send, CheckCircle2, AlertCircle, Sparkles, Building2, Package, Calendar, User, Phone, FileText, Check } from 'lucide-react';
+import { 
+  Plus, Trash2, Send, CheckCircle2, AlertCircle, Sparkles, 
+  Building2, Package, Calendar, User, Phone, FileText, Check,
+  Eye, EyeOff, Smartphone
+} from 'lucide-react';
 import { ReportItem, CABINET_MATERIALS_SUGGESTIONS, CABINET_UNITS, DailyReport } from '../types';
 import { getTodayJalaliString } from '../utils/persianDate';
 import { submitDailyReport } from '../services/storageService';
@@ -7,12 +11,28 @@ import { submitDailyReport } from '../services/storageService';
 interface ProductionFormProps {
   onReportSubmitted: (newReport: DailyReport) => void;
   existingProjects: string[];
+  isHeaderHidden?: boolean;
+  setIsHeaderHidden?: (hidden: boolean) => void;
 }
 
 export const ProductionForm: React.FC<ProductionFormProps> = ({
   onReportSubmitted,
   existingProjects,
+  isHeaderHidden = false,
+  setIsHeaderHidden,
 }) => {
+  // Banner collapse state for maximum viewport on mobile
+  const [isBannerCollapsed, setIsBannerCollapsed] = useState<boolean>(false);
+
+  // Focus handler to automatically hide the top black banner and header when typing (especially on mobile)
+  const handleItemInputFocus = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
+    if (window.innerWidth < 1024) {
+      setIsBannerCollapsed(true);
+      if (setIsHeaderHidden) {
+        setIsHeaderHidden(true);
+      }
+    }
+  };
   // 1. Manager Name (remembers from localStorage for convenience)
   const [managerName, setManagerName] = useState<string>(() => {
     return localStorage.getItem('amouei_manager_name') || '';
@@ -190,38 +210,76 @@ export const ProductionForm: React.FC<ProductionFormProps> = ({
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
       
-      {/* Top Banner (سفید مایل به مشکی) with the EXACT requested Title */}
-      <div className="bg-zinc-950 text-white rounded-3xl p-6 sm:p-8 mb-6 shadow-xl border border-zinc-800 relative overflow-hidden">
-        {/* Subtle decorative grid pattern */}
-        <div className="absolute inset-0 bg-[radial-gradient(#3f3f46_1px,transparent_1px)] [background-size:20px_20px] opacity-20 pointer-events-none"></div>
+      {/* Top Banner with Collapsible View for Mobile */}
+      {isBannerCollapsed ? (
+        <div className="bg-zinc-950 text-white rounded-2xl p-3 sm:p-4 mb-5 shadow-lg border border-zinc-800 flex items-center justify-between gap-3 text-xs transition-all animate-in fade-in duration-200">
+          <div className="flex items-center gap-2.5 truncate">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0"></span>
+            <span className="font-black text-sm text-white truncate">
+              گزارش تولید روزانه مجموعه دکوراسیون داخلی و کابینت عمویی
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setIsBannerCollapsed(false);
+              if (setIsHeaderHidden) setIsHeaderHidden(false);
+            }}
+            className="text-amber-400 hover:text-amber-300 font-bold text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-700 cursor-pointer shrink-0 transition active:scale-95"
+            title="نمایش مجدد سربرگ و جزئیات"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            <span>نمایش کادر بالا</span>
+          </button>
+        </div>
+      ) : (
+        /* Full Top Banner with Hide Button */
+        <div className="bg-zinc-950 text-white rounded-3xl p-6 sm:p-8 mb-6 shadow-xl border border-zinc-800 relative overflow-hidden transition-all">
+          {/* Subtle decorative grid pattern */}
+          <div className="absolute inset-0 bg-[radial-gradient(#3f3f46_1px,transparent_1px)] [background-size:20px_20px] opacity-20 pointer-events-none"></div>
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-5">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-zinc-800/90 text-zinc-300 border border-zinc-700 mb-3">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>سامانه ثبت تولید کارگاه</span>
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-5">
+            <div>
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-zinc-800/90 text-zinc-300 border border-zinc-700">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>سامانه ثبت تولید کارگاه</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsBannerCollapsed(true);
+                    if (setIsHeaderHidden) setIsHeaderHidden(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-zinc-900 text-amber-400 hover:text-amber-300 border border-zinc-700 cursor-pointer transition active:scale-95"
+                  title="مخفی‌سازی موقت جهت باز شدن فضای تایپ در گوشی"
+                >
+                  <EyeOff className="w-3.5 h-3.5" />
+                  <span>مخفی‌سازی کادر بالا (دید بهتر در گوشی)</span>
+                </button>
+              </div>
+
+              {/* EXACT USER-REQUESTED TITLE */}
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-white tracking-tight leading-tight">
+                گزارش تولید روزانه مجموعه دکوراسیون داخلی و کابینت عمویی
+              </h1>
+
+              <p className="text-sm text-zinc-400 mt-2 max-w-2xl leading-relaxed">
+                مدیر و پرسنل محترم کارگاه؛ لطفاً مصالح و اقلام مصرفی شیفت کاری را با درج دقیق شماره موبایل و نام اجباری هر پروژه ثبت نمایید.
+              </p>
             </div>
 
-            {/* EXACT USER-REQUESTED TITLE */}
-            <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-white tracking-tight leading-tight">
-              گزارش تولید روزانه مجموعه دکوراسیون داخلی و کابینت عمویی
-            </h1>
-
-            <p className="text-sm text-zinc-400 mt-2 max-w-2xl leading-relaxed">
-              مدیر و پرسنل محترم کارگاه؛ لطفاً مصالح و اقلام مصرفی شیفت کاری را با درج دقیق شماره موبایل و نام اجباری هر پروژه ثبت نمایید.
-            </p>
-          </div>
-
-          <div className="bg-zinc-900/90 p-4 rounded-2xl border border-zinc-800 text-xs text-zinc-300 shrink-0 self-start md:self-auto">
-            <div className="text-zinc-400 mb-1 font-medium">گیرنده مستقیم اعلان و حسابداری:</div>
-            <div className="font-mono text-white font-bold dir-ltr text-sm">Mm.moj9267@gmail.com</div>
-            <div className="text-emerald-400 mt-1.5 flex items-center gap-1.5 text-[11px] font-semibold">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              اتصال آنلاین فعال
+            <div className="bg-zinc-900/90 p-4 rounded-2xl border border-zinc-800 text-xs text-zinc-300 shrink-0 self-start md:self-auto">
+              <div className="text-zinc-400 mb-1 font-medium">گیرنده مستقیم اعلان و حسابداری:</div>
+              <div className="font-mono text-white font-bold dir-ltr text-sm">Mm.moj9267@gmail.com</div>
+              <div className="text-emerald-400 mt-1.5 flex items-center gap-1.5 text-[11px] font-semibold">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                اتصال آنلاین فعال
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Success Notification Alert */}
       {successReport && (
@@ -377,6 +435,36 @@ export const ProductionForm: React.FC<ProductionFormProps> = ({
 
         {/* Section 2: Consumed Materials & Mandatory Project Name Rows */}
         <div className="bg-white rounded-3xl p-6 sm:p-7 shadow-sm border border-zinc-200">
+          
+          {/* Mobile Comfort Bar: Quick Toggle to Hide/Show Top Banners */}
+          <div className="bg-zinc-100 border border-zinc-300/90 rounded-2xl p-3 mb-5 flex items-center justify-between flex-wrap gap-2 text-xs">
+            <div className="flex items-center gap-2 text-zinc-800 font-bold">
+              <Smartphone className="w-4 h-4 text-zinc-700 shrink-0" />
+              <span>دید باز در گوشی (مخفی‌سازی کادرهای بالا هنگام نوشتن نام کالا):</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const next = !isBannerCollapsed;
+                setIsBannerCollapsed(next);
+                if (setIsHeaderHidden) setIsHeaderHidden(next);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-zinc-900 text-amber-400 hover:text-white text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-xs transition active:scale-95"
+            >
+              {isBannerCollapsed ? (
+                <>
+                  <Eye className="w-3.5 h-3.5 text-amber-400" />
+                  <span>نمایش کادرهای بالای صفحه</span>
+                </>
+              ) : (
+                <>
+                  <EyeOff className="w-3.5 h-3.5 text-amber-400" />
+                  <span>مخفی‌سازی کادرهای بالا (دید کامل)</span>
+                </>
+              )}
+            </button>
+          </div>
+
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 mb-5 border-b border-zinc-200 gap-2">
             <div>
               <h3 className="text-base font-black text-zinc-900 flex items-center gap-2">
@@ -431,6 +519,7 @@ export const ProductionForm: React.FC<ProductionFormProps> = ({
                       list="cabinet-materials-list"
                       required
                       value={item.itemName}
+                      onFocus={handleItemInputFocus}
                       onChange={(e) => handleUpdateItem(index, 'itemName', e.target.value)}
                       placeholder="مثال: ورق هایگلاس سفید، لولا آرام‌بند، چسب ۱۲۳..."
                       className="w-full bg-white border border-zinc-300 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 rounded-xl px-3.5 py-2 text-zinc-900 text-sm outline-none transition"
@@ -448,6 +537,7 @@ export const ProductionForm: React.FC<ProductionFormProps> = ({
                       step="any"
                       required
                       value={item.quantity}
+                      onFocus={handleItemInputFocus}
                       onChange={(e) => handleUpdateItem(index, 'quantity', e.target.value)}
                       className="w-full bg-white border border-zinc-300 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 rounded-xl px-3 py-2 text-zinc-900 text-sm font-bold text-center outline-none transition"
                     />
@@ -460,6 +550,7 @@ export const ProductionForm: React.FC<ProductionFormProps> = ({
                     </label>
                     <select
                       value={item.unit}
+                      onFocus={handleItemInputFocus}
                       onChange={(e) => handleUpdateItem(index, 'unit', e.target.value)}
                       className="w-full bg-white border border-zinc-300 focus:border-zinc-900 rounded-xl px-2.5 py-2 text-zinc-900 text-sm outline-none transition cursor-pointer"
                     >
@@ -484,6 +575,7 @@ export const ProductionForm: React.FC<ProductionFormProps> = ({
                       list="existing-projects-list"
                       required
                       value={item.projectName}
+                      onFocus={handleItemInputFocus}
                       onChange={(e) => handleUpdateItem(index, 'projectName', e.target.value)}
                       placeholder="مثال: کابینت مهندس عباسی"
                       className={`w-full bg-white border rounded-xl px-3.5 py-2 text-sm font-semibold outline-none transition ${
@@ -502,6 +594,7 @@ export const ProductionForm: React.FC<ProductionFormProps> = ({
                   <input
                     type="text"
                     value={item.notes || ''}
+                    onFocus={handleItemInputFocus}
                     onChange={(e) => handleUpdateItem(index, 'notes', e.target.value)}
                     placeholder="مثال: مربوط به باکس هود، بدنه کشوها، پشت‌بند کمد..."
                     className="w-full bg-transparent focus:bg-white border-0 focus:border focus:border-zinc-300 rounded-lg px-2 py-1 text-xs text-zinc-700 outline-none transition"

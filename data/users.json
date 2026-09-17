@@ -1,0 +1,34 @@
+[
+  {
+    "id": "usr_seed_1",
+    "fullName": "محمدابراهیم محمدی",
+    "phone": "09119995002",
+    "password": "1234",
+    "role": "production",
+    "createdAt": "2026-09-15T12:00:00.000Z"
+  },
+  {
+    "id": "usr_seed_2",
+    "fullName": "مهندس رضایی",
+    "phone": "09121234567",
+    "password": "1234",
+    "role": "production",
+    "createdAt": "2026-09-15T12:00:00.000Z"
+  },
+  {
+    "id": "usr_seed_3",
+    "fullName": "پرسنل و مدیر کارگاه تولید",
+    "phone": "tolid",
+    "password": "1234",
+    "role": "production",
+    "createdAt": "2026-09-15T12:00:00.000Z"
+  },
+  {
+    "id": "usr_1789629479137_lx1v",
+    "fullName": "تست کاربر",
+    "phone": "09129998877",
+    "password": "123",
+    "role": "production",
+    "createdAt": "2026-09-17T07:17:59.137Z"
+  }
+]

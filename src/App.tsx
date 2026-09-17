@@ -42,14 +42,18 @@ export default function App() {
   const [reports, setReports] = useState<DailyReport[]>([]);
   const [targetEmail, setTargetEmail] = useState<string>('Mm.moj9267@gmail.com');
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [isOnline, setIsOnline] = useState<boolean>(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [isMobileHeaderHidden, setIsMobileHeaderHidden] = useState<boolean>(false);
 
   // Fetch reports safely with hybrid offline/online support
   const fetchReports = async () => {
     try {
-      setIsLoading(true);
+      setIsSyncing(true);
       const result = await fetchAllReports();
       setReports(result.reports);
+      setIsOnline(result.online);
       if (result.targetEmail) setTargetEmail(result.targetEmail);
       setFetchError(null);
     } catch (err: any) {
@@ -57,6 +61,7 @@ export default function App() {
       setFetchError(err.message || 'خطا در بارگذاری گزارشات');
     } finally {
       setIsLoading(false);
+      setIsSyncing(false);
     }
   };
 
@@ -64,6 +69,35 @@ export default function App() {
     if (session) {
       fetchReports();
     }
+  }, [session]);
+
+  // Periodic background sync every 15 seconds + on window focus & online event
+  useEffect(() => {
+    if (!session) return;
+
+    const runSync = async () => {
+      try {
+        setIsSyncing(true);
+        const result = await fetchAllReports();
+        setReports(result.reports);
+        setIsOnline(result.online);
+        if (result.targetEmail) setTargetEmail(result.targetEmail);
+      } catch (err) {
+        console.log('Background sync note:', err);
+      } finally {
+        setIsSyncing(false);
+      }
+    };
+
+    const interval = setInterval(runSync, 15000);
+    window.addEventListener('focus', runSync);
+    window.addEventListener('online', runSync);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', runSync);
+      window.removeEventListener('online', runSync);
+    };
   }, [session]);
 
   // Handle successful login
@@ -138,6 +172,11 @@ export default function App() {
         reportsCount={reports.length}
         session={session}
         onLogout={handleLogout}
+        isHeaderHidden={isMobileHeaderHidden}
+        onToggleHeader={() => setIsMobileHeaderHidden((prev) => !prev)}
+        onRefresh={fetchReports}
+        isSyncing={isSyncing}
+        isOnline={isOnline}
       />
 
       {/* Main Content Area */}
@@ -168,6 +207,8 @@ export default function App() {
               <ProductionForm
                 onReportSubmitted={handleReportSubmitted}
                 existingProjects={existingProjects}
+                isHeaderHidden={isMobileHeaderHidden}
+                setIsHeaderHidden={setIsMobileHeaderHidden}
               />
             )}
 

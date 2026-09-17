@@ -693,6 +693,33 @@ app.post('/api/reports', async (req, res) => {
   }
 });
 
+// DELETE all reports or clear test reports (Management only)
+app.delete('/api/reports', (req, res) => {
+  try {
+    saveReports([]);
+    res.json({ success: true, message: 'تمام گزارش‌ها با موفقیت از سرور پاکسازی شدند.' });
+  } catch (err: any) {
+    res.status(500).json({ error: 'خطا در پاکسازی گزارش‌ها: ' + err.message });
+  }
+});
+
+// BULK DELETE specific reports by ID list
+app.post('/api/reports/bulk-delete', (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'شناسه گزارش‌های ارسالی نامعتبر است.' });
+    }
+    const idSet = new Set(ids);
+    const reports = loadReports();
+    const filtered = reports.filter((r) => !idSet.has(r.id));
+    saveReports(filtered);
+    res.json({ success: true, deletedCount: reports.length - filtered.length });
+  } catch (err: any) {
+    res.status(500).json({ error: 'خطا در حذف گروهی: ' + err.message });
+  }
+});
+
 // DELETE a report
 app.delete('/api/reports/:id', (req, res) => {
   const { id } = req.params;

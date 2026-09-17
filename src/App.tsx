@@ -6,7 +6,7 @@ import { AccountingSummary } from './components/AccountingSummary';
 import { GoogleSheetsIntegration } from './components/GoogleSheetsIntegration';
 import { AuthScreen } from './components/AuthScreen';
 import { DailyReport, AuthSession, UserRole } from './types';
-import { fetchAllReports, deleteReportById, syncWithServer } from './services/storageService';
+import { fetchAllReports, deleteReportById, clearAllReports, deleteMultipleReports, syncWithServer } from './services/storageService';
 
 export default function App() {
   // Session authentication state
@@ -156,7 +156,34 @@ export default function App() {
       await deleteReportById(id);
       setReports((prev) => prev.filter((r) => r.id !== id));
     } catch (err: any) {
-      alert(err.message || 'خطا در حذف گزارش');
+      console.error('Error deleting report:', err);
+    }
+  };
+
+  // Delete multiple reports (Management)
+  const handleDeleteMultipleReports = async (ids: string[]) => {
+    try {
+      setIsSyncing(true);
+      await deleteMultipleReports(ids);
+      const idSet = new Set(ids);
+      setReports((prev) => prev.filter((r) => !idSet.has(r.id)));
+    } catch (err: any) {
+      console.error('Error deleting multiple reports:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Clear all reports (Management only - e.g. wiping test data before live operations)
+  const handleClearAllReports = async () => {
+    try {
+      setIsSyncing(true);
+      await clearAllReports();
+      setReports([]);
+    } catch (err: any) {
+      console.error('Error clearing all reports:', err);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -219,6 +246,8 @@ export default function App() {
                 reports={reports}
                 onRefresh={fetchReports}
                 onDeleteReport={handleDeleteReport}
+                onDeleteMultipleReports={handleDeleteMultipleReports}
+                onClearAllReports={handleClearAllReports}
                 targetEmail={targetEmail}
                 userRole={session.role}
               />

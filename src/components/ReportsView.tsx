@@ -11,6 +11,8 @@ interface ReportsViewProps {
   reports: DailyReport[];
   onRefresh: () => void;
   onDeleteReport: (id: string) => void;
+  onDeleteMultipleReports?: (ids: string[]) => void;
+  onClearAllReports?: () => void;
   targetEmail: string;
   userRole?: 'admin' | 'production';
 }
@@ -19,6 +21,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   reports,
   onRefresh,
   onDeleteReport,
+  onDeleteMultipleReports,
+  onClearAllReports,
   targetEmail,
   userRole = 'production',
 }) => {
@@ -27,6 +31,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const [selectedProject, setSelectedProject] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
+
+  // Deletion modals & selection state (no iframe confirm() issues)
+  const [reportToDelete, setReportToDelete] = useState<DailyReport | null>(null);
+  const [showClearAllModal, setShowClearAllModal] = useState<boolean>(false);
+  const [showBatchDeleteModal, setShowBatchDeleteModal] = useState<boolean>(false);
+  const [selectedReportIds, setSelectedReportIds] = useState<Set<string>>(new Set());
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
   // Extract unique dates and projects
   const uniqueDates = useMemo(() => {
@@ -83,6 +94,80 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     return filteredReports.reduce((sum, r) => sum + r.items.length, 0);
   }, [filteredReports]);
 
+  // Selection handlers
+  const toggleSelectReport = (id: string) => {
+    setSelectedReportIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedReportIds.size === filteredReports.length && filteredReports.length > 0) {
+      setSelectedReportIds(new Set());
+    } else {
+      setSelectedReportIds(new Set(filteredReports.map((r) => r.id)));
+    }
+  };
+
+  // Safe Deletion Handlers (Modal confirmations without window.confirm)
+  const handleConfirmSingleDelete = async () => {
+    if (!reportToDelete) return;
+    setIsDeleting(true);
+    try {
+      await onDeleteReport(reportToDelete.id);
+      setSelectedReportIds((prev) => {
+        const next = new Set(prev);
+        next.delete(reportToDelete.id);
+        return next;
+      });
+      setReportToDelete(null);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleConfirmBatchDelete = async () => {
+    if (selectedReportIds.size === 0) return;
+    setIsDeleting(true);
+    try {
+      if (onDeleteMultipleReports) {
+        await onDeleteMultipleReports(Array.from(selectedReportIds));
+      } else {
+        for (const id of Array.from(selectedReportIds)) {
+          await onDeleteReport(id);
+        }
+      }
+      setSelectedReportIds(new Set());
+      setShowBatchDeleteModal(false);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleConfirmClearAll = async () => {
+    setIsDeleting(true);
+    try {
+      if (onClearAllReports) {
+        await onClearAllReports();
+      } else if (onDeleteMultipleReports) {
+        await onDeleteMultipleReports(reports.map((r) => r.id));
+      }
+      setSelectedReportIds(new Set());
+      setShowClearAllModal(false);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Handle Excel download
   const handleDownloadExcel = () => {
     const params = new URLSearchParams();
@@ -134,6 +219,33 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               <Printer className="w-3.5 h-3.5 text-zinc-600" />
               چاپ برگه
             </button>
+
+            {/* Management-only Deletion & Maintenance Actions */}
+            {userRole === 'admin' && reports.length > 0 && (
+              <>
+                {selectedReportIds.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowBatchDeleteModal(true)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-black bg-rose-600 hover:bg-rose-700 text-white transition active:scale-98 cursor-pointer shadow-sm"
+                    title="حذف گزارش‌های انتخاب شده"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    حذف {toPersianDigits(selectedReportIds.size)} مورد انتخاب‌شده
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setShowClearAllModal(true)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition active:scale-98 cursor-pointer"
+                  title="پاکسازی کامل تمام گزارش‌های تستی قبل از شروع روز کاری"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                  پاکسازی تمام گزارش‌های تستی
+                </button>
+              </>
+            )}
 
             {userRole === 'admin' && (
               <button
@@ -344,16 +456,57 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         </div>
       ) : (
         <div className="space-y-4">
+          {/* Admin Multi-select Toolbar */}
+          {userRole === 'admin' && (
+            <div className="flex items-center justify-between bg-zinc-200/70 border border-zinc-300/80 px-4 py-2.5 rounded-2xl text-xs">
+              <label className="flex items-center gap-2 cursor-pointer font-bold text-zinc-800 select-none">
+                <input
+                  type="checkbox"
+                  checked={selectedReportIds.size === filteredReports.length && filteredReports.length > 0}
+                  onChange={handleSelectAll}
+                  className="w-4 h-4 rounded text-zinc-900 cursor-pointer accent-zinc-900"
+                />
+                <span>انتخاب همه گزارش‌های نمایش داده‌شده ({toPersianDigits(filteredReports.length)} مورد)</span>
+              </label>
+              {selectedReportIds.size > 0 && (
+                <div className="flex items-center gap-3">
+                  <span className="text-zinc-700 font-bold">
+                    {toPersianDigits(selectedReportIds.size)} گزارش علامت‌گذاری شده
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowBatchDeleteModal(true)}
+                    className="text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white px-3 py-1 rounded-xl transition cursor-pointer"
+                  >
+                    حذف موارد انتخاب‌شده
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {filteredReports.map((report) => {
             const isExpanded = expandedReportId === report.id;
+            const isSelected = selectedReportIds.has(report.id);
             return (
               <div
                 key={report.id}
-                className="bg-white rounded-3xl border border-zinc-200 hover:border-zinc-400 transition-all shadow-xs overflow-hidden"
+                className={`bg-white rounded-3xl border transition-all shadow-xs overflow-hidden ${
+                  isSelected ? 'border-zinc-900 ring-2 ring-zinc-900/10' : 'border-zinc-200 hover:border-zinc-400'
+                }`}
               >
                 {/* Card Header */}
                 <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-zinc-50/60 border-b border-zinc-100">
                   <div className="flex items-start sm:items-center gap-3">
+                    {userRole === 'admin' && (
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelectReport(report.id)}
+                        className="w-4 h-4 rounded text-zinc-900 cursor-pointer accent-zinc-900 mt-3 sm:mt-0 shrink-0"
+                        title="انتخاب این گزارش برای حذف"
+                      />
+                    )}
                     <div className="w-10 h-10 rounded-2xl bg-zinc-900 text-white flex items-center justify-center font-bold text-sm shrink-0">
                       📅
                     </div>
@@ -413,11 +566,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => {
-                        if (confirm(`آیا از حذف گزارش تاریخ ${report.reportDate} اطمینان دارید؟`)) {
-                          onDeleteReport(report.id);
-                        }
-                      }}
+                      onClick={() => setReportToDelete(report)}
                       className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
                       title="حذف این گزارش"
                     >
@@ -473,6 +622,142 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 1. SINGLE REPORT DELETE MODAL (In-App, safe for iFrame) */}
+      {/* ========================================================================= */}
+      {reportToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl border border-zinc-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            
+            <h3 className="text-lg font-black text-zinc-900 text-center">
+              حذف گزارش تاریخ {reportToDelete.reportDate}
+            </h3>
+            
+            <p className="text-xs text-zinc-600 text-center mt-2 leading-relaxed">
+              آیا از حذف این گزارش مربوط به <strong className="text-zinc-900">{reportToDelete.managerName}</strong> با تعداد <strong className="text-zinc-900">{toPersianDigits(reportToDelete.items.length)} قلم کالا</strong> اطمینان دارید؟
+            </p>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 my-4 text-[11px] text-amber-800 leading-normal">
+              ⚠️ این عملیات، سند مربوطه را به صورت پایدار از پایگاه داده ابری و سیستم حذف می‌کند.
+            </div>
+
+            <div className="flex gap-2.5 mt-5">
+              <button
+                type="button"
+                onClick={handleConfirmSingleDelete}
+                disabled={isDeleting}
+                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition cursor-pointer disabled:opacity-50"
+              >
+                {isDeleting ? 'در حال حذف...' : 'بله، حذف کن'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setReportToDelete(null)}
+                disabled={isDeleting}
+                className="flex-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 font-bold py-2.5 px-4 rounded-xl text-xs transition cursor-pointer"
+              >
+                انصراف
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 2. BATCH DELETE MODAL */}
+      {/* ========================================================================= */}
+      {showBatchDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl border border-zinc-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            
+            <h3 className="text-lg font-black text-zinc-900 text-center">
+              حذف گروهی {toPersianDigits(selectedReportIds.size)} گزارش
+            </h3>
+            
+            <p className="text-xs text-zinc-600 text-center mt-2 leading-relaxed">
+              آیا از حذف تمامی {toPersianDigits(selectedReportIds.size)} گزارش علامت‌گذاری شده اطمینان دارید؟
+            </p>
+
+            <div className="flex gap-2.5 mt-5">
+              <button
+                type="button"
+                onClick={handleConfirmBatchDelete}
+                disabled={isDeleting}
+                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition cursor-pointer disabled:opacity-50"
+              >
+                {isDeleting ? 'در حال حذف گروهی...' : 'حذف موارد انتخاب‌شده'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowBatchDeleteModal(false)}
+                disabled={isDeleting}
+                className="flex-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 font-bold py-2.5 px-4 rounded-xl text-xs transition cursor-pointer"
+              >
+                انصراف
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 3. CLEAR ALL TEST REPORTS MODAL (Management Maintenance) */}
+      {/* ========================================================================= */}
+      {showClearAllModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl border border-zinc-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="w-14 h-14 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle className="w-8 h-8" />
+            </div>
+            
+            <h3 className="text-xl font-black text-zinc-900 text-center">
+              پاکسازی کامل تمام گزارش‌های تستی
+            </h3>
+            
+            <p className="text-xs text-zinc-600 text-center mt-2 leading-relaxed">
+              شما در حال پاکسازی کلیه <strong className="text-zinc-900 font-bold">{toPersianDigits(reports.length)} گزارش</strong> ثبت‌شده هستید.
+            </p>
+
+            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 my-4 text-xs text-rose-900 leading-relaxed space-y-1.5">
+              <p className="font-bold flex items-center gap-1.5 text-rose-700">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                هدف این قابلیت:
+              </p>
+              <p>
+                تمامی گزارشات تستی که تا این لحظه برای آزمودن سامانه ثبت کرده‌اید از <strong>دیتابیس ابری فایربیس گوگل و سرور</strong> به طور کامل پاک می‌شوند تا با فرا رسیدن روز کاری واقعی، اطلاعات تستی موجب اشتباه در تصمیم‌گیری مدیریت و حسابداری نشود.
+              </p>
+              <p className="text-[11px] text-rose-700 font-medium">
+                (توجه: حساب‌های کاربری و شماره‌های ثبت‌نامی پرسنل باقی خواهند ماند و پاک نمی‌شوند.)
+              </p>
+            </div>
+
+            <div className="flex gap-2.5 mt-5">
+              <button
+                type="button"
+                onClick={handleConfirmClearAll}
+                disabled={isDeleting}
+                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-black py-3 px-4 rounded-xl text-xs transition cursor-pointer shadow-md shadow-rose-600/20 disabled:opacity-50"
+              >
+                {isDeleting ? 'در حال پاکسازی دیتابیس...' : 'تأیید و پاکسازی کامل همه گزارش‌های تستی'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowClearAllModal(false)}
+                disabled={isDeleting}
+                className="bg-zinc-100 hover:bg-zinc-200 text-zinc-800 font-bold py-3 px-5 rounded-xl text-xs transition cursor-pointer"
+              >
+                انصراف
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

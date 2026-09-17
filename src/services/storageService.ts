@@ -1,5 +1,14 @@
 import { AuthSession, DailyReport, ReportItem } from '../types';
 import { normalizeDigits } from '../utils/persianDate';
+import { db } from '../lib/firebase';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  deleteDoc,
+} from 'firebase/firestore';
 
 export interface StaffAccount {
   id: string;
@@ -15,6 +24,79 @@ const LOCAL_REPORTS_KEY = 'amouei_local_reports';
 const TARGET_EMAIL_KEY = 'amouei_target_email';
 const LAST_SYNC_KEY = 'amouei_last_sync_time';
 
+// Default seed users
+const DEFAULT_STAFF: StaffAccount[] = [
+  {
+    id: 'usr_seed_1',
+    fullName: 'محمدابراهیم محمدی',
+    phone: '09119995002',
+    password: '1234',
+    role: 'production',
+    createdAt: '2026-09-15T12:00:00.000Z',
+  },
+  {
+    id: 'usr_seed_2',
+    fullName: 'مهندس رضایی',
+    phone: '09121234567',
+    password: '1234',
+    role: 'production',
+    createdAt: '2026-09-15T12:00:00.000Z',
+  },
+  {
+    id: 'usr_seed_3',
+    fullName: 'پرسنل و مدیر کارگاه تولید',
+    phone: 'tolid',
+    password: '1234',
+    role: 'production',
+    createdAt: '2026-09-15T12:00:00.000Z',
+  },
+];
+
+// Error handling helper as required by Firebase specification
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: null,
+      email: null,
+      emailVerified: null,
+      isAnonymous: null,
+      tenantId: null,
+      providerInfo: [],
+    },
+    operationType,
+    path,
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
 // -----------------------------------------------------------------------------
 // LOCAL CACHE ACCESSORS
 // -----------------------------------------------------------------------------
@@ -22,11 +104,11 @@ const LAST_SYNC_KEY = 'amouei_last_sync_time';
 export function getLocalUsers(): StaffAccount[] {
   try {
     const raw = localStorage.getItem(REGISTERED_USERS_KEY);
-    if (!raw) return [];
+    if (!raw) return DEFAULT_STAFF;
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_STAFF;
   } catch {
-    return [];
+    return DEFAULT_STAFF;
   }
 }
 
@@ -73,8 +155,7 @@ export function saveLocalReports(reports: DailyReport[]): void {
 }
 
 // -----------------------------------------------------------------------------
-// BIDIRECTIONAL 2-WAY SYNC ENGINE (CLIENT <-> CLOUD SERVER)
-// Ensures all mobile devices, PCs, and management see 100% synchronized state
+// MULTI-TIER CLOUD SYNC ENGINE (FIRESTORE <-> SERVER API <-> CLIENT STORAGE)
 // -----------------------------------------------------------------------------
 
 export async function syncWithServer(
@@ -89,92 +170,117 @@ export async function syncWithServer(
   const localReports = getLocalReports();
   const localUsers = getLocalUsers();
 
-  // Merge any extras before sending
-  const reportsToSendMap = new Map<string, DailyReport>();
-  localReports.forEach((r) => reportsToSendMap.set(r.id, r));
+  const reportsMap = new Map<string, DailyReport>();
+  localReports.forEach((r) => reportsMap.set(r.id, r));
   if (extraReports) {
-    extraReports.forEach((r) => reportsToSendMap.set(r.id, r));
+    extraReports.forEach((r) => reportsMap.set(r.id, r));
   }
 
-  const usersToSendMap = new Map<string, StaffAccount>();
+  const usersMap = new Map<string, StaffAccount>();
   localUsers.forEach((u) => {
     const p = normalizeDigits(u.phone).replace(/[\s-]/g, '');
-    usersToSendMap.set(p, u);
+    usersMap.set(p, u);
   });
   if (extraUsers) {
     extraUsers.forEach((u) => {
       const p = normalizeDigits(u.phone).replace(/[\s-]/g, '');
-      usersToSendMap.set(p, u);
+      usersMap.set(p, u);
     });
   }
 
-  let serverReports: DailyReport[] = [];
-  let serverUsers: StaffAccount[] = [];
-  let email = localStorage.getItem(TARGET_EMAIL_KEY) || 'Mm.moj9267@gmail.com';
   let isOnline = false;
+  let email = localStorage.getItem(TARGET_EMAIL_KEY) || 'Mm.moj9267@gmail.com';
 
+  // 1. Fetch and Sync from Google Cloud Firestore (Primary Persistent Database)
+  try {
+    // Sync Users from Firestore
+    const usersPath = 'users';
+    try {
+      const usersSnap = await getDocs(collection(db, usersPath));
+      usersSnap.forEach((docSnap) => {
+        const u = docSnap.data() as StaffAccount;
+        if (u && u.phone) {
+          const p = normalizeDigits(u.phone).replace(/[\s-]/g, '');
+          usersMap.set(p, {
+            ...u,
+            phone: p,
+          });
+        }
+      });
+      isOnline = true;
+    } catch (e: any) {
+      if (e?.code === 'permission-denied') {
+        handleFirestoreError(e, OperationType.LIST, usersPath);
+      }
+    }
+
+    // Sync Reports from Firestore
+    const reportsPath = 'reports';
+    try {
+      const reportsSnap = await getDocs(collection(db, reportsPath));
+      reportsSnap.forEach((docSnap) => {
+        const r = docSnap.data() as DailyReport;
+        if (r && r.id && r.reportDate) {
+          reportsMap.set(r.id, r);
+        }
+      });
+      isOnline = true;
+    } catch (e: any) {
+      if (e?.code === 'permission-denied') {
+        handleFirestoreError(e, OperationType.LIST, reportsPath);
+      }
+    }
+  } catch (firestoreErr) {
+    console.warn('Firestore sync note:', firestoreErr);
+  }
+
+  // 2. Secondary Sync with Express Server (for Email Notifications and Server Fallback)
   try {
     const res = await fetch('/api/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        reports: Array.from(reportsToSendMap.values()),
-        users: Array.from(usersToSendMap.values()),
+        reports: Array.from(reportsMap.values()),
+        users: Array.from(usersMap.values()),
       }),
     });
 
-    const contentType = res.headers.get('content-type') || '';
-    if (res.ok && contentType.includes('application/json')) {
+    if (res.ok) {
+      isOnline = true;
       const data = await res.json();
       if (data?.success) {
-        isOnline = true;
         if (Array.isArray(data.reports)) {
-          serverReports = data.reports;
+          data.reports.forEach((r: DailyReport) => {
+            if (r && r.id) reportsMap.set(r.id, r);
+          });
         }
         if (Array.isArray(data.users)) {
-          serverUsers = data.users;
+          data.users.forEach((u: StaffAccount) => {
+            if (u && u.phone) {
+              const p = normalizeDigits(u.phone).replace(/[\s-]/g, '');
+              usersMap.set(p, u);
+            }
+          });
         }
         if (data.targetEmail) {
           email = data.targetEmail;
           localStorage.setItem(TARGET_EMAIL_KEY, email);
         }
-        localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
       }
     }
-  } catch (err) {
-    // Network error or offline
-    console.warn('Sync server currently offline, relying on local device storage.');
+  } catch (serverErr) {
+    // If Express API is temporarily unavailable, Firestore was already contacted
   }
 
-  // Merge reports: Server authoritative + local fallback
-  const finalReportsMap = new Map<string, DailyReport>();
-  serverReports.forEach((r) => finalReportsMap.set(r.id, r));
-  localReports.forEach((r) => {
-    if (!finalReportsMap.has(r.id)) {
-      finalReportsMap.set(r.id, r);
-    }
-  });
-
-  const mergedReports = Array.from(finalReportsMap.values()).sort(
+  // Final consolidated state
+  const mergedReports = Array.from(reportsMap.values()).sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
   saveLocalReports(mergedReports);
 
-  // Merge users
-  const finalUsersMap = new Map<string, StaffAccount>();
-  serverUsers.forEach((u) => {
-    const p = normalizeDigits(u.phone).replace(/[\s-]/g, '');
-    finalUsersMap.set(p, u);
-  });
-  localUsers.forEach((u) => {
-    const p = normalizeDigits(u.phone).replace(/[\s-]/g, '');
-    if (!finalUsersMap.has(p)) {
-      finalUsersMap.set(p, u);
-    }
-  });
-
-  const mergedUsers = Array.from(finalUsersMap.values());
+  const mergedUsers = Array.from(usersMap.values());
   saveLocalUsers(mergedUsers);
+  localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
 
   return {
     reports: mergedReports,
@@ -207,9 +313,8 @@ export async function registerUser(params: {
     throw new Error('رمز عبور انتخابی باید حداقل ۳ رقم یا حرف باشد.');
   }
 
-  // 1. Prepare new account object
   const newAccount: StaffAccount = {
-    id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    id: `usr_${cleanPhone}`,
     fullName: cleanFullName,
     phone: cleanPhone,
     password: cleanPassword,
@@ -217,10 +322,20 @@ export async function registerUser(params: {
     createdAt: new Date().toISOString(),
   };
 
-  // 2. Register on server API
-  let serverAccepted = false;
+  // 1. Direct Persistent Write to Google Cloud Firestore
   try {
-    const res = await fetch('/api/register', {
+    const userDocRef = doc(db, 'users', cleanPhone);
+    await setDoc(userDocRef, newAccount);
+  } catch (fsErr: any) {
+    console.warn('Firestore register write note:', fsErr);
+    if (fsErr?.code === 'permission-denied') {
+      handleFirestoreError(fsErr, OperationType.WRITE, `users/${cleanPhone}`);
+    }
+  }
+
+  // 2. Also Post to Express Server API
+  try {
+    await fetch('/api/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -229,28 +344,12 @@ export async function registerUser(params: {
         password: cleanPassword,
       }),
     });
-
-    const contentType = res.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
-      const data = await res.json();
-      if (!res.ok && data?.error) {
-        throw new Error(data.error);
-      }
-      if (res.ok && data?.success) {
-        serverAccepted = true;
-      }
-    }
-  } catch (err: any) {
-    if (err.message && !err.message.includes('fetch') && !err.message.includes('Failed to fetch')) {
-      throw err;
-    }
+  } catch (serverErr) {
+    console.log('Server register note:', serverErr);
   }
 
-  // 3. Save locally in device storage (guarantees immediate offline access)
+  // 3. Cache in Local Storage
   saveLocalUser(newAccount);
-
-  // 4. Trigger background cloud sync with all devices
-  syncWithServer([newAccount]).catch((e) => console.log('Post-register sync note:', e));
 
   return {
     role: 'production',
@@ -271,7 +370,6 @@ export async function loginUser(params: {
   const normP = normalizeDigits(rawP).replace(/[\s-]/g, '');
 
   // 1. Management Check (Admin / Amouei)
-  // Username: amouei | Password: 34503450 (or 1234)
   const isAdminUser =
     normU === 'amouei' ||
     normU === 'admin' ||
@@ -300,7 +398,34 @@ export async function loginUser(params: {
     };
   }
 
-  // 2. Try Server API Login First (Ensures cross-device login works even if user registered on a different phone)
+  // 2. Query Google Cloud Firestore Directly for Registered Phone
+  try {
+    const userDocRef = doc(db, 'users', normU);
+    const userSnap = await getDoc(userDocRef);
+    if (userSnap.exists()) {
+      const userData = userSnap.data() as StaffAccount;
+      const storedPass = normalizeDigits(userData.password || '').replace(/[\s-]/g, '');
+      if (storedPass === normP || userData.password === rawP) {
+        // Cache locally for offline resilience
+        saveLocalUser(userData);
+        return {
+          role: 'production',
+          username: userData.phone,
+          displayName: userData.fullName,
+          phone: userData.phone,
+        };
+      } else {
+        throw new Error('رمز عبور وارد شده نادرست است.');
+      }
+    }
+  } catch (fsErr: any) {
+    if (fsErr.message && fsErr.message.includes('رمز عبور')) {
+      throw fsErr;
+    }
+    console.warn('Firestore login check note:', fsErr);
+  }
+
+  // 3. Try Express Server API Login
   try {
     const res = await fetch('/api/login', {
       method: 'POST',
@@ -308,11 +433,9 @@ export async function loginUser(params: {
       body: JSON.stringify({ username: normU, password: normP }),
     });
 
-    const contentType = res.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
+    if (res.ok) {
       const data = await res.json();
-      if (res.ok && data?.success) {
-        // Cache user locally on this device as well
+      if (data?.success) {
         saveLocalUser({
           id: `usr_${normU}`,
           fullName: data.displayName || 'پرسنل کارگاه',
@@ -321,10 +444,6 @@ export async function loginUser(params: {
           role: 'production',
           createdAt: new Date().toISOString(),
         });
-
-        // Trigger background sync to pull latest reports
-        syncWithServer().catch(() => {});
-
         return {
           role: data.role,
           username: data.username,
@@ -332,16 +451,12 @@ export async function loginUser(params: {
           phone: data.phone,
         };
       }
-      if (!res.ok && data?.error && !data.error.includes('سرور')) {
-        // Server responded with an explicit auth rejection
-        // Still fall through to check local cache in case of offline mismatch
-      }
     }
-  } catch (err: any) {
-    // Network or server unreachable, fallback to local cache
+  } catch (serverErr) {
+    // Offline or server rebooting
   }
 
-  // 3. Check locally cached accounts by phone number
+  // 4. Check Local Device Cache
   const localUsers = getLocalUsers();
   const matched = localUsers.find((user) => {
     const userPhone = normalizeDigits(user.phone).replace(/[\s-]/g, '');
@@ -366,7 +481,7 @@ export async function loginUser(params: {
     }
   }
 
-  // 4. Default Seed/Demo staff accounts
+  // 5. Default Demo / Seed Accounts
   if (
     (normU === 'tolid' || normU === 'kargah' || normU === 'پرسنل' || normU === 'مدیر تولید' || normU === 'user') &&
     (normP === '1234' || normP === 'tolid1234' || normP === 'kargah')
@@ -383,7 +498,7 @@ export async function loginUser(params: {
 }
 
 // -----------------------------------------------------------------------------
-// REPORTS STORAGE (HYBRID CLOUD + MULTI-DEVICE SYNC)
+// REPORTS STORAGE (FIRESTORE + EMAIL DISPATCH + CACHE)
 // -----------------------------------------------------------------------------
 
 export async function fetchAllReports(): Promise<{
@@ -419,18 +534,29 @@ export async function submitDailyReport(reportData: {
     createdAt: new Date().toISOString(),
   };
 
-  // 1. Immediately store in local cache so user NEVER loses their data on this phone
+  // 1. Immediately Save to Local Cache (Offline guarantee)
   const current = getLocalReports();
-  const updated = [newReport, ...current];
+  const updated = [newReport, ...current.filter((r) => r.id !== newReport.id)];
   saveLocalReports(updated);
 
-  // 2. Post to server to send email and register in central database
-  let savedReport = newReport;
+  // 2. Direct Persistent Write to Google Cloud Firestore
+  try {
+    const reportDocRef = doc(db, 'reports', newReport.id);
+    await setDoc(reportDocRef, newReport);
+  } catch (fsErr: any) {
+    console.warn('Firestore report write note:', fsErr);
+    if (fsErr?.code === 'permission-denied') {
+      handleFirestoreError(fsErr, OperationType.WRITE, `reports/${newReport.id}`);
+    }
+  }
+
+  // 3. Post to Express Server to Trigger Email Dispatch
   try {
     const res = await fetch('/api/reports', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        id: newReport.id,
         managerName: newReport.managerName,
         managerPhone: newReport.managerPhone,
         reportDate: newReport.reportDate,
@@ -438,34 +564,100 @@ export async function submitDailyReport(reportData: {
         items: newReport.items,
       }),
     });
-    const contentType = res.headers.get('content-type') || '';
-    if (res.ok && contentType.includes('application/json')) {
+    if (res.ok) {
       const data = await res.json();
-      if (data?.report) {
-        savedReport = data.report;
-        // Update local cache with server confirmed report ID
-        const finalLocal = [savedReport, ...current.filter((r) => r.id !== newReport.id)];
+      if (data?.report?.emailStatus) {
+        newReport.emailStatus = data.report.emailStatus;
+        const finalLocal = [newReport, ...current.filter((r) => r.id !== newReport.id)];
         saveLocalReports(finalLocal);
       }
     }
-  } catch (err) {
-    console.warn('Could not post report immediately to server, saved safely in device cache:', err);
+  } catch (serverErr) {
+    console.log('Server dispatch note:', serverErr);
   }
 
-  // 3. Run full sync to propagate across all workers and management
-  syncWithServer([], [savedReport]).catch((e) => console.log('Post-submit sync note:', e));
+  // 4. Background Sync
+  syncWithServer([], [newReport]).catch((e) => console.log('Post-submit sync note:', e));
 
-  return savedReport;
+  return newReport;
 }
 
 export async function deleteReportById(id: string): Promise<void> {
+  // 1. Delete from Local Cache
   const current = getLocalReports();
   const updated = current.filter((r) => r.id !== id);
   saveLocalReports(updated);
 
+  // 2. Delete from Google Cloud Firestore
+  try {
+    const reportDocRef = doc(db, 'reports', id);
+    await deleteDoc(reportDocRef);
+  } catch (fsErr: any) {
+    console.warn('Firestore delete note:', fsErr);
+    if (fsErr?.code === 'permission-denied') {
+      handleFirestoreError(fsErr, OperationType.DELETE, `reports/${id}`);
+    }
+  }
+
+  // 3. Delete from Express Server
   try {
     await fetch(`/api/reports/${id}`, { method: 'DELETE' });
   } catch {
-    // Local deletion was already completed
+    // Handled
+  }
+}
+
+export async function deleteMultipleReports(ids: string[]): Promise<void> {
+  if (!ids || ids.length === 0) return;
+  const idSet = new Set(ids);
+
+  // 1. Local cache update
+  const current = getLocalReports();
+  const updated = current.filter((r) => !idSet.has(r.id));
+  saveLocalReports(updated);
+
+  // 2. Delete from Firestore
+  try {
+    const promises = ids.map((id) => deleteDoc(doc(db, 'reports', id)));
+    await Promise.all(promises);
+  } catch (fsErr: any) {
+    console.warn('Firestore bulk delete note:', fsErr);
+  }
+
+  // 3. Delete from Express Server
+  try {
+    await fetch('/api/reports/bulk-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
+  } catch {
+    // Handled
+  }
+}
+
+export async function clearAllReports(): Promise<void> {
+  // 1. Clear Local Cache
+  saveLocalReports([]);
+
+  // 2. Delete all from Google Cloud Firestore
+  try {
+    const reportsSnap = await getDocs(collection(db, 'reports'));
+    const deletePromises = reportsSnap.docs.map((docSnap) =>
+      deleteDoc(doc(db, 'reports', docSnap.id))
+    );
+    await Promise.all(deletePromises);
+  } catch (fsErr: any) {
+    console.warn('Firestore clear all note:', fsErr);
+    if (fsErr?.code === 'permission-denied') {
+      handleFirestoreError(fsErr, OperationType.DELETE, 'reports');
+    }
+  }
+
+  // 3. Delete from Express Server
+  try {
+    await fetch('/api/reports', { method: 'DELETE' });
+  } catch {
+    // Handled
   }
 }

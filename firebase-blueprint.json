@@ -1,0 +1,43 @@
+{
+  "entities": {
+    "StaffUser": {
+      "title": "StaffUser",
+      "description": "Registered workshop staff or manager",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "fullName": { "type": "string", "maxLength": 150 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "password": { "type": "string", "maxLength": 100 },
+        "role": { "type": "string", "enum": ["production", "admin"] },
+        "createdAt": { "type": "string", "maxLength": 60 }
+      },
+      "required": ["id", "fullName", "phone", "password", "role", "createdAt"]
+    },
+    "DailyReport": {
+      "title": "DailyReport",
+      "description": "Daily production report from workshop",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "managerName": { "type": "string", "maxLength": 150 },
+        "managerPhone": { "type": "string", "maxLength": 30 },
+        "reportDate": { "type": "string", "maxLength": 30 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "maxLength": 60 },
+        "items": { "type": "array" }
+      },
+      "required": ["id", "managerName", "reportDate", "items", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "StaffUser",
+      "description": "Collection of registered staff and workers"
+    },
+    "/reports/{reportId}": {
+      "schema": "DailyReport",
+      "description": "Collection of daily workshop production reports"
+    }
+  }
+}
